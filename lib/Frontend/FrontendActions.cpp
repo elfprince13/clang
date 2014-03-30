@@ -630,6 +630,7 @@ void PrintPreambleAction::ExecuteAction() {
   case IK_ObjCXX:
   case IK_OpenCL:
   case IK_CUDA:
+	  case IK_Skeletons:
     break;
       
   case IK_None:
