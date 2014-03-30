@@ -850,6 +850,7 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
       .Case("c", IK_C)
       .Case("cl", IK_OpenCL)
       .Case("cuda", IK_CUDA)
+	  .Case("skeletons", IK_Skeletons)
       .Case("c++", IK_CXX)
       .Case("objective-c", IK_ObjC)
       .Case("objective-c++", IK_ObjCXX)
@@ -1055,6 +1056,9 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
     case IK_OpenCL:
       LangStd = LangStandard::lang_opencl;
       break;
+	case IK_Skeletons:
+			LangStd = LangStandard::lang_skeletons;
+			break;
     case IK_CUDA:
       LangStd = LangStandard::lang_cuda;
       break;
@@ -1112,6 +1116,12 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
 
   if (LangStd == LangStandard::lang_cuda)
     Opts.CUDA = 1;
+	
+	if (LangStd == LangStandard::lang_skeletons){
+		Opts.CUDA = 1;
+		Opts.Skeletons = 1;
+		Opts.PyTxform = 1;
+	}
 
   // OpenCL and C++ both have bool, true, false keywords.
   Opts.Bool = Opts.OpenCL || Opts.CPlusPlus;

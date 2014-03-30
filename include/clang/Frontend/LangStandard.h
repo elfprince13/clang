@@ -28,7 +28,9 @@ enum LangFeatures {
   Digraphs = (1 << 7),
   GNUMode = (1 << 8),
   HexFloat = (1 << 9),
-  ImplicitInt = (1 << 10)
+  ImplicitInt = (1 << 10),
+	Skeletons = (1 << 11),
+	PyTxform = (1 << 12)
 };
 
 }
