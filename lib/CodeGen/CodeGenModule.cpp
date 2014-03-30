@@ -60,6 +60,7 @@ static CGCXXABI *createCXXABI(CodeGenModule &CGM) {
   case TargetCXXABI::GenericAArch64:
   case TargetCXXABI::GenericARM:
   case TargetCXXABI::iOS:
+  case TargetCXXABI::iOS64:
   case TargetCXXABI::GenericItanium:
     return CreateItaniumCXXABI(CGM);
   case TargetCXXABI::Microsoft:
@@ -1177,12 +1178,14 @@ void CodeGenModule::EmitGlobal(GlobalDecl GD) {
       if (!FD->doesDeclarationForceExternallyVisibleDefinition())
         return;
 
-      const FunctionDecl *InlineDefinition = 0;
-      FD->getBody(InlineDefinition);
-
       StringRef MangledName = getMangledName(GD);
-      DeferredDecls.erase(MangledName);
-      EmitGlobalDefinition(InlineDefinition);
+
+      // Compute the function info and LLVM type.
+      const CGFunctionInfo &FI = getTypes().arrangeGlobalDeclaration(GD);
+      llvm::Type *Ty = getTypes().GetFunctionType(FI);
+
+      GetOrCreateLLVMFunction(MangledName, Ty, GD, /*ForVTable=*/false,
+                              /*DontDefer=*/false);
       return;
     }
   } else {
