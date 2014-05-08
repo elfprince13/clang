@@ -132,7 +132,7 @@ static StringRef NormalizeAttrSpelling(StringRef AttrSpelling) {
 typedef std::vector<std::pair<std::string, Record *>> ParsedAttrMap;
 
 static ParsedAttrMap getParsedAttrList(const RecordKeeper &Records,
-                                       ParsedAttrMap *Dupes = 0) {
+                                       ParsedAttrMap *Dupes = nullptr) {
   std::vector<Record *> Attrs = Records.getAllDerivedDefinitions("Attr");
   std::set<std::string> Seen;
   ParsedAttrMap R;
@@ -504,32 +504,33 @@ namespace {
   };
 
   class VariadicArgument : public Argument {
-    std::string type;
+    std::string Type, ArgName, ArgSizeName, RangeName;
 
   public:
     VariadicArgument(Record &Arg, StringRef Attr, std::string T)
-      : Argument(Arg, Attr), type(T)
-    {}
+        : Argument(Arg, Attr), Type(T), ArgName(getLowerName().str() + "_"),
+          ArgSizeName(ArgName + "Size"), RangeName(getLowerName()) {}
 
-    std::string getType() const { return type; }
+    std::string getType() const { return Type; }
 
     void writeAccessors(raw_ostream &OS) const override {
-      OS << "  typedef " << type << "* " << getLowerName() << "_iterator;\n";
-      OS << "  " << getLowerName() << "_iterator " << getLowerName()
-         << "_begin() const {\n";
-      OS << "    return " << getLowerName() << ";\n";
-      OS << "  }\n";
-      OS << "  " << getLowerName() << "_iterator " << getLowerName()
-         << "_end() const {\n";
-      OS << "    return " << getLowerName() << " + " << getLowerName()
-         << "Size;\n";
-      OS << "  }\n";
-      OS << "  unsigned " << getLowerName() << "_size() const {\n"
-         << "    return " << getLowerName() << "Size;\n";
-      OS << "  }";
+      std::string IteratorType = getLowerName().str() + "_iterator";
+      std::string BeginFn = getLowerName().str() + "_begin()";
+      std::string EndFn = getLowerName().str() + "_end()";
+      
+      OS << "  typedef " << Type << "* " << IteratorType << ";\n";
+      OS << "  " << IteratorType << " " << BeginFn << " const {"
+         << " return " << ArgName << "; }\n";
+      OS << "  " << IteratorType << " " << EndFn << " const {"
+         << " return " << ArgName << " + " << ArgSizeName << "; }\n";
+      OS << "  unsigned " << getLowerName() << "_size() const {"
+         << " return " << ArgSizeName << "; }\n";
+      OS << "  llvm::iterator_range<" << IteratorType << "> " << RangeName
+         << "() const { return llvm::make_range(" << BeginFn << ", " << EndFn
+         << "); }\n";
     }
     void writeCloneArgs(raw_ostream &OS) const override {
-      OS << getLowerName() << ", " << getLowerName() << "Size";
+      OS << ArgName << ", " << ArgSizeName;
     }
     void writeTemplateInstantiationArgs(raw_ostream &OS) const override {
       // This isn't elegant, but we have to go through public methods...
@@ -537,17 +538,16 @@ namespace {
          << "A->" << getLowerName() << "_size()";
     }
     void writeCtorBody(raw_ostream &OS) const override {
-      // FIXME: memcpy is not safe on non-trivial types.
-      OS << "    std::memcpy(" << getLowerName() << ", " << getUpperName()
-         << ", " << getLowerName() << "Size * sizeof(" << getType() << "));\n";
+      OS << "    std::copy(" << getUpperName() << ", " << getUpperName()
+         << " + " << ArgSizeName << ", " << ArgName << ");";
     }
     void writeCtorInitializers(raw_ostream &OS) const override {
-      OS << getLowerName() << "Size(" << getUpperName() << "Size), "
-         << getLowerName() << "(new (Ctx, 16) " << getType() << "["
-         << getLowerName() << "Size])";
+      OS << ArgSizeName << "(" << getUpperName() << "Size), "
+         << ArgName << "(new (Ctx, 16) " << getType() << "["
+         << ArgSizeName << "])";
     }
     void writeCtorDefaultInitializers(raw_ostream &OS) const override {
-      OS << getLowerName() << "Size(0), " << getLowerName() << "(0)";
+      OS << ArgSizeName << "(0), " << ArgName << "(nullptr)";
     }
     void writeCtorParameters(raw_ostream &OS) const override {
       OS << getType() << " *" << getUpperName() << ", unsigned "
@@ -557,18 +557,18 @@ namespace {
       OS << getUpperName() << ", " << getUpperName() << "Size";
     }
     void writeDeclarations(raw_ostream &OS) const override {
-      OS << "  unsigned " << getLowerName() << "Size;\n";
-      OS << "  " << getType() << " *" << getLowerName() << ";";
+      OS << "  unsigned " << ArgSizeName << ";\n";
+      OS << "  " << getType() << " *" << ArgName << ";";
     }
     void writePCHReadDecls(raw_ostream &OS) const override {
       OS << "  unsigned " << getLowerName() << "Size = Record[Idx++];\n";
-      OS << "  SmallVector<" << type << ", 4> " << getLowerName()
+      OS << "  SmallVector<" << Type << ", 4> " << getLowerName()
          << ";\n";
       OS << "  " << getLowerName() << ".reserve(" << getLowerName()
          << "Size);\n";
       OS << "    for (unsigned i = " << getLowerName() << "Size; i; --i)\n";
       
-      std::string read = ReadPCHRecord(type);
+      std::string read = ReadPCHRecord(Type);
       OS << "    " << getLowerName() << ".push_back(" << read << ");\n";
     }
     void writePCHReadArgs(raw_ostream &OS) const override {
@@ -576,28 +576,22 @@ namespace {
     }
     void writePCHWrite(raw_ostream &OS) const override {
       OS << "    Record.push_back(SA->" << getLowerName() << "_size());\n";
-      OS << "    for (" << getAttrName() << "Attr::" << getLowerName()
-         << "_iterator i = SA->" << getLowerName() << "_begin(), e = SA->"
-         << getLowerName() << "_end(); i != e; ++i)\n";
-      OS << "      " << WritePCHRecord(type, "(*i)");
+      OS << "    for (auto &Val : SA->" << RangeName << "())\n";
+      OS << "      " << WritePCHRecord(Type, "Val");
     }
     void writeValue(raw_ostream &OS) const override {
       OS << "\";\n";
       OS << "  bool isFirst = true;\n"
-         << "  for (" << getAttrName() << "Attr::" << getLowerName()
-         << "_iterator i = " << getLowerName() << "_begin(), e = "
-         << getLowerName() << "_end(); i != e; ++i) {\n"
+         << "  for (const auto &Val : " << RangeName << "()) {\n"
          << "    if (isFirst) isFirst = false;\n"
          << "    else OS << \", \";\n"
-         << "    OS << *i;\n"
+         << "    OS << Val;\n"
          << "  }\n";
       OS << "  OS << \"";
     }
     void writeDump(raw_ostream &OS) const override {
-      OS << "    for (" << getAttrName() << "Attr::" << getLowerName()
-         << "_iterator I = SA->" << getLowerName() << "_begin(), E = SA->"
-         << getLowerName() << "_end(); I != E; ++I)\n";
-      OS << "      OS << \" \" << *I;\n";
+      OS << "    for (const auto &Val : SA->" << RangeName << "())\n";
+      OS << "      OS << \" \" << Val;\n";
     }
   };
 
@@ -965,11 +959,11 @@ namespace {
 }
 
 static std::unique_ptr<Argument> createArgument(Record &Arg, StringRef Attr,
-                                                Record *Search = 0) {
+                                                Record *Search = nullptr) {
   if (!Search)
     Search = &Arg;
 
-  Argument *Ptr = 0;
+  Argument *Ptr = nullptr;
   llvm::StringRef ArgName = Search->getName();
 
   if (ArgName == "AlignedArgument") Ptr = new AlignedArgument(Arg, Attr);
@@ -1720,22 +1714,16 @@ void EmitClangAttrPCHWrite(RecordKeeper &Records, raw_ostream &OS) {
   OS << "  }\n";
 }
 
-// Emits the list of spellings for attributes.
-void EmitClangAttrSpellingList(RecordKeeper &Records, raw_ostream &OS) {
-  emitSourceFileHeader("llvm::StringSwitch code to match attributes based on "
-                       "the target triple, T", OS);
-
-  std::vector<Record*> Attrs = Records.getAllDerivedDefinitions("Attr");
-  
-  for (auto I : Attrs) {
-    Record &Attr = *I;
-
+static void GenerateHasAttrSpellingStringSwitch(
+    const std::vector<Record *> &Attrs, raw_ostream &OS,
+    const std::string &Variety = "", const std::string &Scope = "") {
+  for (const auto *Attr : Attrs) {
     // It is assumed that there will be an llvm::Triple object named T within
     // scope that can be used to determine whether the attribute exists in
     // a given target.
     std::string Test;
-    if (Attr.isSubClassOf("TargetSpecificAttr")) {
-      const Record *R = Attr.getValueAsDef("Target");
+    if (Attr->isSubClassOf("TargetSpecificAttr")) {
+      const Record *R = Attr->getValueAsDef("Target");
       std::vector<std::string> Arches = R->getValueAsListOfStrings("Arches");
 
       Test += "(";
@@ -1760,13 +1748,79 @@ void EmitClangAttrSpellingList(RecordKeeper &Records, raw_ostream &OS) {
         }
         Test += ")";
       }
-    } else
+      
+      // If this is the C++11 variety, also add in the LangOpts test.
+      if (Variety == "CXX11")
+        Test += " && LangOpts.CPlusPlus11";
+    } else if (Variety == "CXX11")
+      // C++11 mode should be checked against LangOpts, which is presumed to be
+      // present in the caller.
+      Test = "LangOpts.CPlusPlus11";
+    else
       Test = "true";
 
-    std::vector<FlattenedSpelling> Spellings = GetFlattenedSpellings(Attr);
+    std::vector<FlattenedSpelling> Spellings = GetFlattenedSpellings(*Attr);
     for (const auto &S : Spellings)
-      OS << ".Case(\"" << S.name() << "\", " << Test << ")\n";
+      if (Variety.empty() || (Variety == S.variety() &&
+                              (Scope.empty() || Scope == S.nameSpace())))
+        OS << "    .Case(\"" << S.name() << "\", " << Test << ")\n";
   }
+  OS << "    .Default(false);\n";
+}
+
+// Emits the list of spellings for attributes.
+void EmitClangAttrHasAttrImpl(RecordKeeper &Records, raw_ostream &OS) {
+  emitSourceFileHeader("Code to implement the __has_attribute logic", OS);
+
+  // Separate all of the attributes out into four group: generic, C++11, GNU,
+  // and declspecs. Then generate a big switch statement for each of them.
+  std::vector<Record *> Attrs = Records.getAllDerivedDefinitions("Attr");
+  std::vector<Record *> Declspec, GNU;
+  std::map<std::string, std::vector<Record *>> CXX;
+
+  // Walk over the list of all attributes, and split them out based on the
+  // spelling variety.
+  for (auto *R : Attrs) {
+    std::vector<FlattenedSpelling> Spellings = GetFlattenedSpellings(*R);
+    for (const auto &SI : Spellings) {
+      std::string Variety = SI.variety();
+      if (Variety == "GNU")
+        GNU.push_back(R);
+      else if (Variety == "Declspec")
+        Declspec.push_back(R);
+      else if (Variety == "CXX11") {
+        CXX[SI.nameSpace()].push_back(R);
+      }
+    }
+  }
+
+  OS << "switch (Syntax) {\n";
+  OS << "case AttrSyntax::Generic:\n";
+  OS << "  return llvm::StringSwitch<bool>(Name)\n";
+  GenerateHasAttrSpellingStringSwitch(Attrs, OS);
+  OS << "case AttrSyntax::GNU:\n";
+  OS << "  return llvm::StringSwitch<bool>(Name)\n";
+  GenerateHasAttrSpellingStringSwitch(GNU, OS, "GNU");
+  OS << "case AttrSyntax::Declspec:\n";
+  OS << "  return llvm::StringSwitch<bool>(Name)\n";
+  GenerateHasAttrSpellingStringSwitch(Declspec, OS, "Declspec");
+  OS << "case AttrSyntax::CXX: {\n";
+  // C++11-style attributes are further split out based on the Scope.
+  for (std::map<std::string, std::vector<Record *>>::iterator I = CXX.begin(),
+                                                              E = CXX.end();
+       I != E; ++I) {
+    if (I != CXX.begin())
+      OS << " else ";
+    if (I->first.empty())
+      OS << "if (!Scope || Scope->getName() == \"\") {\n";
+    else
+      OS << "if (Scope->getName() == \"" << I->first << "\") {\n";
+    OS << "  return llvm::StringSwitch<bool>(Name)\n";
+    GenerateHasAttrSpellingStringSwitch(I->second, OS, "CXX11", I->first);
+    OS << "}";
+  }
+  OS << "\n}\n";
+  OS << "}\n";
 }
 
 void EmitClangAttrSpellingListIndex(RecordKeeper &Records, raw_ostream &OS) {
@@ -2449,7 +2503,7 @@ void EmitClangAttrParsedAttrKinds(RecordKeeper &Records, raw_ostream &OS) {
       std::vector<FlattenedSpelling> Spellings = GetFlattenedSpellings(Attr);
       for (const auto &S : Spellings) {
         std::string RawSpelling = S.name();
-        std::vector<StringMatcher::StringPair> *Matches = 0;
+        std::vector<StringMatcher::StringPair> *Matches = nullptr;
         std::string Spelling, Variety = S.variety();
         if (Variety == "CXX11") {
           Matches = &CXX11;

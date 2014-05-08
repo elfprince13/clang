@@ -625,13 +625,25 @@ void OMPClausePrinter::VisitOMPDefaultClause(OMPDefaultClause *Node) {
      << ")";
 }
 
+void OMPClausePrinter::VisitOMPProcBindClause(OMPProcBindClause *Node) {
+  OS << "proc_bind("
+     << getOpenMPSimpleClauseTypeName(OMPC_proc_bind, Node->getProcBindKind())
+     << ")";
+}
+
 template<typename T>
 void OMPClausePrinter::VisitOMPClauseList(T *Node, char StartSym) {
   for (typename T::varlist_iterator I = Node->varlist_begin(),
                                     E = Node->varlist_end();
-         I != E; ++I)
-    OS << (I == Node->varlist_begin() ? StartSym : ',')
-       << *cast<NamedDecl>(cast<DeclRefExpr>(*I)->getDecl());
+         I != E; ++I) {
+    if (DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(*I)) {
+      OS << (I == Node->varlist_begin() ? StartSym : ',');
+      cast<NamedDecl>(DRE->getDecl())->printQualifiedName(OS);
+    } else {
+      OS << (I == Node->varlist_begin() ? StartSym : ',');
+      (*I)->printPretty(OS, 0, Policy, 0);
+    }
+  }
 }
 
 void OMPClausePrinter::VisitOMPPrivateClause(OMPPrivateClause *Node) {
@@ -653,6 +665,26 @@ void OMPClausePrinter::VisitOMPFirstprivateClause(OMPFirstprivateClause *Node) {
 void OMPClausePrinter::VisitOMPSharedClause(OMPSharedClause *Node) {
   if (!Node->varlist_empty()) {
     OS << "shared";
+    VisitOMPClauseList(Node, '(');
+    OS << ")";
+  }
+}
+
+void OMPClausePrinter::VisitOMPLinearClause(OMPLinearClause *Node) {
+  if (!Node->varlist_empty()) {
+    OS << "linear";
+    VisitOMPClauseList(Node, '(');
+    if (Node->getStep() != 0) {
+      OS << ": ";
+      Node->getStep()->printPretty(OS, 0, Policy, 0);
+    }
+    OS << ")";
+  }
+}
+
+void OMPClausePrinter::VisitOMPCopyinClause(OMPCopyinClause *Node) {
+  if (!Node->varlist_empty()) {
+    OS << "copyin";
     VisitOMPClauseList(Node, '(');
     OS << ")";
   }
@@ -774,6 +806,9 @@ void StmtPrinter::VisitPredefinedExpr(PredefinedExpr *Node) {
       break;
     case PredefinedExpr::FuncDName:
       OS << "__FUNCDNAME__";
+      break;
+    case PredefinedExpr::FuncSig:
+      OS << "__FUNCSIG__";
       break;
     case PredefinedExpr::LFunction:
       OS << "L__FUNCTION__";

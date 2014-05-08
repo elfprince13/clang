@@ -422,6 +422,8 @@ comments::FullComment *ASTContext::cloneFullComment(comments::FullComment *FC,
   ThisDeclInfo->IsFilled = false;
   ThisDeclInfo->fill();
   ThisDeclInfo->CommentDecl = FC->getDecl();
+  if (!ThisDeclInfo->TemplateParameters)
+    ThisDeclInfo->TemplateParameters = FC->getDeclInfo()->TemplateParameters;
   comments::FullComment *CFC =
     new (*this) comments::FullComment(FC->getBlocks(),
                                       ThisDeclInfo);
@@ -722,11 +724,8 @@ static bool isAddrSpaceMapManglingEnabled(const TargetInfo &TI,
 }
 
 ASTContext::ASTContext(LangOptions& LOpts, SourceManager &SM,
-                       const TargetInfo *t,
                        IdentifierTable &idents, SelectorTable &sels,
-                       Builtin::Context &builtins,
-                       unsigned size_reserve,
-                       bool DelayInitialization) 
+                       Builtin::Context &builtins)
   : FunctionProtoTypes(this_()),
     TemplateSpecializationTypes(this_()),
     DependentTemplateSpecializationTypes(this_()),
@@ -744,7 +743,7 @@ ASTContext::ASTContext(LangOptions& LOpts, SourceManager &SM,
     NullTypeSourceInfo(QualType()), 
     FirstLocalImport(), LastLocalImport(),
     SourceMgr(SM), LangOpts(LOpts), 
-    AddrSpaceMap(0), Target(t), PrintingPolicy(LOpts),
+    AddrSpaceMap(0), Target(0), PrintingPolicy(LOpts),
     Idents(idents), Selectors(sels),
     BuiltinInfo(builtins),
     DeclarationNames(*this),
@@ -753,13 +752,7 @@ ASTContext::ASTContext(LangOptions& LOpts, SourceManager &SM,
     CommentCommandTraits(BumpAlloc, LOpts.CommentOpts),
     LastSDM(0, 0)
 {
-  if (size_reserve > 0) Types.reserve(size_reserve);
   TUDecl = TranslationUnitDecl::Create(*this);
-  
-  if (!DelayInitialization) {
-    assert(t && "No target supplied for ASTContext initialization");
-    InitBuiltinTypes(*t);
-  }
 }
 
 ASTContext::~ASTContext() {
@@ -1322,7 +1315,9 @@ CharUnits ASTContext::getDeclAlign(const Decl *D, bool ForAlignof) const {
             Align = std::max(Align, Target->getLargeArrayAlign());
         }
 
-        // Walk through any array types while we're at it.
+        // Keep track of extra alignment requirements on the array itself, then
+        // work with the element type.
+        Align = std::max(Align, getPreferredTypeAlign(T.getTypePtr()));
         T = getBaseElementType(arrayType);
       }
       Align = std::max(Align, getPreferredTypeAlign(T.getTypePtr()));
@@ -3559,12 +3554,28 @@ bool ASTContext::QIdProtocolsAdoptObjCObjectProtocols(QualType QT,
   CollectInheritedProtocols(IDecl, InheritedProtocols);
   if (InheritedProtocols.empty())
     return false;
-      
+  // Check that if every protocol in list of id<plist> conforms to a protcol
+  // of IDecl's, then bridge casting is ok.
+  bool Conforms = false;
+  for (auto *Proto : OPT->quals()) {
+    Conforms = false;
+    for (auto *PI : InheritedProtocols) {
+      if (ProtocolCompatibleWithProtocol(Proto, PI)) {
+        Conforms = true;
+        break;
+      }
+    }
+    if (!Conforms)
+      break;
+  }
+  if (Conforms)
+    return true;
+  
   for (auto *PI : InheritedProtocols) {
     // If both the right and left sides have qualifiers.
     bool Adopts = false;
     for (auto *Proto : OPT->quals()) {
-      // return 'true' if '*PI' is in the inheritance hierarchy of Proto
+      // return 'true' if 'PI' is in the inheritance hierarchy of Proto
       if ((Adopts = ProtocolCompatibleWithProtocol(PI, Proto)))
         break;
     }
@@ -5018,6 +5029,8 @@ void ASTContext::getObjCEncodingForPropertyDecl(const ObjCPropertyDecl *PD,
       S += ",C";
     if (PD->getPropertyAttributes() & ObjCPropertyDecl::OBJC_PR_retain)
       S += ",&";
+    if (PD->getPropertyAttributes() & ObjCPropertyDecl::OBJC_PR_weak)
+      S += ",W";
   } else {
     switch (PD->getSetterKind()) {
     case ObjCPropertyDecl::Assign: break;
@@ -7730,7 +7743,7 @@ QualType ASTContext::GetBuiltinType(unsigned Id,
   return getFunctionType(ResType, ArgTypes, EPI);
 }
 
-GVALinkage ASTContext::GetGVALinkageForFunction(const FunctionDecl *FD) {
+GVALinkage ASTContext::GetGVALinkageForFunction(const FunctionDecl *FD) const {
   if (!FD->isExternallyVisible())
     return GVA_Internal;
 
@@ -7742,11 +7755,13 @@ GVALinkage ASTContext::GetGVALinkageForFunction(const FunctionDecl *FD) {
     break;
 
   case TSK_ExplicitInstantiationDefinition:
-    return GVA_ExplicitTemplateInstantiation;
+    return GVA_StrongODR;
 
   case TSK_ExplicitInstantiationDeclaration:
+    return GVA_AvailableExternally;
+
   case TSK_ImplicitInstantiation:
-    External = GVA_TemplateInstantiation;
+    External = GVA_DiscardableODR;
     break;
   }
 
@@ -7761,7 +7776,7 @@ GVALinkage ASTContext::GetGVALinkageForFunction(const FunctionDecl *FD) {
       return External;
 
     // C99 inline semantics, where the symbol is not externally visible.
-    return GVA_C99Inline;
+    return GVA_AvailableExternally;
   }
 
   // C++0x [temp.explicit]p9:
@@ -7772,13 +7787,46 @@ GVALinkage ASTContext::GetGVALinkageForFunction(const FunctionDecl *FD) {
   //   generated in the translation unit. -- end note ]
   if (FD->getTemplateSpecializationKind() 
                                        == TSK_ExplicitInstantiationDeclaration)
-    return GVA_C99Inline;
+    return GVA_AvailableExternally;
 
-  return GVA_CXXInline;
+  // Functions specified with extern and inline in -fms-compatibility mode
+  // forcibly get emitted.  While the body of the function cannot be later
+  // replaced, the function definition cannot be discarded.
+  if (FD->getMostRecentDecl()->isMSExternInline())
+    return GVA_StrongODR;
+
+  return GVA_DiscardableODR;
 }
 
 GVALinkage ASTContext::GetGVALinkageForVariable(const VarDecl *VD) {
   if (!VD->isExternallyVisible())
+    return GVA_Internal;
+
+  if (VD->isStaticLocal()) {
+    GVALinkage StaticLocalLinkage = GVA_DiscardableODR;
+    const DeclContext *LexicalContext = VD->getParentFunctionOrMethod();
+    while (LexicalContext && !isa<FunctionDecl>(LexicalContext))
+      LexicalContext = LexicalContext->getLexicalParent();
+
+    // Let the static local variable inherit it's linkage from the nearest
+    // enclosing function.
+    if (LexicalContext)
+      StaticLocalLinkage =
+          GetGVALinkageForFunction(cast<FunctionDecl>(LexicalContext));
+
+    // GVA_StrongODR function linkage is stronger than what we need,
+    // downgrade to GVA_DiscardableODR.
+    // This allows us to discard the variable if we never end up needing it.
+    return StaticLocalLinkage == GVA_StrongODR ? GVA_DiscardableODR
+                                               : StaticLocalLinkage;
+  }
+
+  // On Darwin, the backing variable for a C++11 thread_local variable always
+  // has internal linkage; all accesses should just be calls to the
+  // Itanium-specified entry point, which has the normal linkage of the
+  // variable.
+  if (VD->getTLSKind() == VarDecl::TLS_Dynamic &&
+      getTargetInfo().getTriple().isMacOSX())
     return GVA_Internal;
 
   switch (VD->getTemplateSpecializationKind()) {
@@ -7786,15 +7834,14 @@ GVALinkage ASTContext::GetGVALinkageForVariable(const VarDecl *VD) {
   case TSK_ExplicitSpecialization:
     return GVA_StrongExternal;
 
-  case TSK_ExplicitInstantiationDeclaration:
-    llvm_unreachable("Variable should not be instantiated");
-  // Fall through to treat this like any other instantiation.
-
   case TSK_ExplicitInstantiationDefinition:
-    return GVA_ExplicitTemplateInstantiation;
+    return GVA_StrongODR;
+
+  case TSK_ExplicitInstantiationDeclaration:
+    return GVA_AvailableExternally;
 
   case TSK_ImplicitInstantiation:
-    return GVA_TemplateInstantiation;
+    return GVA_DiscardableODR;
   }
 
   llvm_unreachable("Invalid Linkage!");
@@ -7850,8 +7897,8 @@ bool ASTContext::DeclMustBeEmitted(const Decl *D) {
     // static, static inline, always_inline, and extern inline functions can
     // always be deferred.  Normal inline functions can be deferred in C99/C++.
     // Implicit template instantiations can also be deferred in C++.
-    if (Linkage == GVA_Internal  || Linkage == GVA_C99Inline ||
-        Linkage == GVA_CXXInline || Linkage == GVA_TemplateInstantiation)
+    if (Linkage == GVA_Internal || Linkage == GVA_AvailableExternally ||
+        Linkage == GVA_DiscardableODR)
       return false;
     return true;
   }
@@ -7864,7 +7911,7 @@ bool ASTContext::DeclMustBeEmitted(const Decl *D) {
 
   // Variables that can be needed in other TUs are required.
   GVALinkage L = GetGVALinkageForVariable(VD);
-  if (L != GVA_Internal && L != GVA_TemplateInstantiation)
+  if (L != GVA_Internal && L != GVA_DiscardableODR)
     return true;
 
   // Variables that have destruction with side-effects are required.

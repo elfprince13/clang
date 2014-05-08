@@ -508,52 +508,6 @@ void RTTIBuilder::BuildVTablePointer(const Type *Ty) {
   Fields.push_back(VTable);
 }
 
-/// What sort of unique-RTTI behavior should we use?
-enum UniqueRTTIKind {
-  /// We are guaranteeing, or need to guarantee, that the RTTI string
-  /// is unique.
-  UniqueRTTI,
-
-  /// We are not guaranteeing uniqueness for the RTTI string, so we
-  /// can demote to hidden visibility and use string comparisons.
-  NonUniqueHiddenRTTI,
-
-  /// We are not guaranteeing uniqueness for the RTTI string, so we
-  /// have to use string comparisons, but we also have to emit it with
-  /// non-hidden visibility.
-  NonUniqueVisibleRTTI
-};
-
-/// What sort of uniqueness rules should we use for the RTTI for the
-/// given type?
-static UniqueRTTIKind
-classifyUniqueRTTI(CodeGenModule &CGM, QualType canTy,
-                   llvm::GlobalValue::LinkageTypes linkage) {
-  // We only support non-unique RTTI on iOS64.
-  // FIXME: abstract this into CGCXXABI after this code moves to trunk.
-  if (CGM.getTarget().getCXXABI().getKind() != TargetCXXABI::iOS64)
-    return UniqueRTTI;
-
-  // It's only necessary for linkonce_odr or weak_odr linkage.
-  if (linkage != llvm::GlobalValue::LinkOnceODRLinkage &&
-      linkage != llvm::GlobalValue::WeakODRLinkage)
-    return UniqueRTTI;
-
-  // It's only necessary with default visibility.
-  if (canTy->getVisibility() != DefaultVisibility)
-    return UniqueRTTI;
-
-  // If we're not required to publish this symbol, hide it.
-  if (linkage == llvm::GlobalValue::LinkOnceODRLinkage)
-    return NonUniqueHiddenRTTI;
-
-  // If we're required to publish this symbol, as we might be under an
-  // explicit instantiation, leave it with default visibility but
-  // enable string-comparisons.
-  assert(linkage == llvm::GlobalValue::WeakODRLinkage);
-  return NonUniqueVisibleRTTI;
-}
-
 llvm::Constant *RTTIBuilder::BuildTypeInfo(QualType Ty, bool Force) {
   // We want to operate on the canonical type.
   Ty = CGM.getContext().getCanonicalType(Ty);
@@ -590,24 +544,25 @@ llvm::Constant *RTTIBuilder::BuildTypeInfo(QualType Ty, bool Force) {
   
   // And the name.
   llvm::GlobalVariable *TypeName = GetAddrOfTypeName(Ty, Linkage);
-  llvm::Constant *typeNameField;
+  llvm::Constant *TypeNameField;
 
   // If we're supposed to demote the visibility, be sure to set a flag
   // to use a string comparison for type_info comparisons.
-  UniqueRTTIKind uniqueRTTI = classifyUniqueRTTI(CGM, Ty, Linkage);
-  if (uniqueRTTI != UniqueRTTI) {
+  CGCXXABI::RTTIUniquenessKind RTTIUniqueness =
+      CGM.getCXXABI().classifyRTTIUniqueness(Ty, Linkage);
+  if (RTTIUniqueness != CGCXXABI::RUK_Unique) {
     // The flag is the sign bit, which on ARM64 is defined to be clear
     // for global pointers.  This is very ARM64-specific.
-    typeNameField = llvm::ConstantExpr::getPtrToInt(TypeName, CGM.Int64Ty);
+    TypeNameField = llvm::ConstantExpr::getPtrToInt(TypeName, CGM.Int64Ty);
     llvm::Constant *flag =
         llvm::ConstantInt::get(CGM.Int64Ty, ((uint64_t)1) << 63);
-    typeNameField = llvm::ConstantExpr::getAdd(typeNameField, flag);
-    typeNameField =
-        llvm::ConstantExpr::getIntToPtr(typeNameField, CGM.Int8PtrTy);
+    TypeNameField = llvm::ConstantExpr::getAdd(TypeNameField, flag);
+    TypeNameField =
+        llvm::ConstantExpr::getIntToPtr(TypeNameField, CGM.Int8PtrTy);
   } else {
-    typeNameField = llvm::ConstantExpr::getBitCast(TypeName, CGM.Int8PtrTy);
+    TypeNameField = llvm::ConstantExpr::getBitCast(TypeName, CGM.Int8PtrTy);
   }
-  Fields.push_back(typeNameField);
+  Fields.push_back(TypeNameField);
 
   switch (Ty->getTypeClass()) {
 #define TYPE(Class, Base)
@@ -723,17 +678,16 @@ llvm::Constant *RTTIBuilder::BuildTypeInfo(QualType Ty, bool Force) {
 
   // Give the type_info object and name the formal visibility of the
   // type itself.
-  Visibility formalVisibility = Ty->getVisibility();
-  llvm::GlobalValue::VisibilityTypes llvmVisibility =
-    CodeGenModule::GetLLVMVisibility(formalVisibility);
+  llvm::GlobalValue::VisibilityTypes llvmVisibility;
+  if (llvm::GlobalValue::isLocalLinkage(Linkage))
+    // If the linkage is local, only default visibility makes sense.
+    llvmVisibility = llvm::GlobalValue::DefaultVisibility;
+  else if (RTTIUniqueness == CGCXXABI::RUK_NonUniqueHidden)
+    llvmVisibility = llvm::GlobalValue::HiddenVisibility;
+  else
+    llvmVisibility = CodeGenModule::GetLLVMVisibility(Ty->getVisibility());
   TypeName->setVisibility(llvmVisibility);
   GV->setVisibility(llvmVisibility);
-
-  // FIXME: integrate this better into the above when we move to trunk
-  if (uniqueRTTI == NonUniqueHiddenRTTI) {
-    TypeName->setVisibility(llvm::GlobalValue::HiddenVisibility);
-    GV->setVisibility(llvm::GlobalValue::HiddenVisibility);
-  }
 
   return llvm::ConstantExpr::getBitCast(GV, CGM.Int8PtrTy);
 }
@@ -1029,7 +983,8 @@ void CodeGenModule::EmitFundamentalRTTIDescriptors() {
                                   Context.UnsignedShortTy, Context.IntTy,
                                   Context.UnsignedIntTy, Context.LongTy, 
                                   Context.UnsignedLongTy, Context.LongLongTy, 
-                                  Context.UnsignedLongLongTy, Context.FloatTy,
+                                  Context.UnsignedLongLongTy,
+                                  Context.HalfTy, Context.FloatTy,
                                   Context.DoubleTy, Context.LongDoubleTy,
                                   Context.Char16Ty, Context.Char32Ty };
   for (unsigned i = 0; i < llvm::array_lengthof(FundamentalTypes); ++i)

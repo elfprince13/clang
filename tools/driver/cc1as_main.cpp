@@ -34,6 +34,7 @@
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/MC/MCTargetAsmParser.h"
+#include "llvm/MC/MCTargetOptions.h"
 #include "llvm/Option/Arg.h"
 #include "llvm/Option/ArgList.h"
 #include "llvm/Option/OptTable.h"
@@ -296,6 +297,11 @@ static bool ExecuteAssembler(AssemblerInvocation &Opts,
   std::unique_ptr<MCAsmInfo> MAI(TheTarget->createMCAsmInfo(*MRI, Opts.Triple));
   assert(MAI && "Unable to create target asm info!");
 
+  // Ensure MCAsmInfo initialization occurs before any use, otherwise sections
+  // may be created with a combination of default and explicit settings.
+  if (Opts.CompressDebugSections)
+    MAI->setCompressDebugSections(true);
+
   bool IsBinary = Opts.OutputType == AssemblerInvocation::FT_Obj;
   formatted_raw_ostream *Out = GetOutputStream(Opts, Diags, IsBinary);
   if (!Out)
@@ -304,6 +310,7 @@ static bool ExecuteAssembler(AssemblerInvocation &Opts,
   // FIXME: This is not pretty. MCContext has a ptr to MCObjectFileInfo and
   // MCObjectFileInfo needs a MCContext reference in order to initialize itself.
   std::unique_ptr<MCObjectFileInfo> MOFI(new MCObjectFileInfo());
+
   MCContext Ctx(MAI.get(), MRI.get(), MOFI.get(), &SrcMgr);
   // FIXME: Assembler behavior can change with -static.
   MOFI->InitMCObjectFileInfo(Opts.Triple,
@@ -320,8 +327,6 @@ static bool ExecuteAssembler(AssemblerInvocation &Opts,
     Ctx.setCompilationDir(Opts.DebugCompilationDir);
   if (!Opts.MainFileName.empty())
     Ctx.setMainFileName(StringRef(Opts.MainFileName));
-  if (Opts.CompressDebugSections)
-    MAI->setCompressDebugSections(true);
 
   // Build up the feature string from the target feature list.
   std::string FS;
@@ -349,7 +354,6 @@ static bool ExecuteAssembler(AssemblerInvocation &Opts,
       MAB = TheTarget->createMCAsmBackend(*MRI, Opts.Triple, Opts.CPU);
     }
     Str.reset(TheTarget->createAsmStreamer(Ctx, *Out, /*asmverbose*/true,
-                                           /*useCFI*/ true,
                                            /*useDwarfDirectory*/ true,
                                            IP, CE, MAB,
                                            Opts.ShowInst));
@@ -369,8 +373,11 @@ static bool ExecuteAssembler(AssemblerInvocation &Opts,
 
   std::unique_ptr<MCAsmParser> Parser(
       createMCAsmParser(SrcMgr, Ctx, *Str.get(), *MAI));
+
+  // FIXME: init MCTargetOptions from sanitizer flags here.
+  MCTargetOptions Options;
   std::unique_ptr<MCTargetAsmParser> TAP(
-      TheTarget->createMCAsmParser(*STI, *Parser, *MCII));
+      TheTarget->createMCAsmParser(*STI, *Parser, *MCII, Options));
   if (!TAP) {
     Diags.Report(diag::err_target_unknown_triple) << Opts.Triple;
     return false;

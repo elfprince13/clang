@@ -316,7 +316,7 @@ def ext_pp_extra_tokens_at_eol : ExtWarn<
 def ext_pp_comma_expr : Extension<"comma operator in operand of #if">;
 def ext_pp_bad_vaargs_use : Extension<
   "__VA_ARGS__ can only appear in the expansion of a C99 variadic macro">;
-def ext_pp_macro_redef : ExtWarn<"%0 macro redefined">;
+def ext_pp_macro_redef : ExtWarn<"%0 macro redefined">, InGroup<MacroRedefined>;
 def ext_variadic_macro : Extension<"variadic macros are a C99 feature">,
   InGroup<VariadicMacros>;
 def warn_cxx98_compat_variadic_macro : Warning<
@@ -620,6 +620,14 @@ def error_use_of_private_header_outside_module : Error<
   "use of private header from outside its module: '%0'">;
 def error_undeclared_use_of_module : Error<
   "module %0 does not depend on a module exporting '%1'">;
+def warn_non_modular_include_in_framework_module : Warning<
+  "include of non-modular header inside framework module '%0'">,
+  InGroup<NonModularIncludeInFrameworkModule>, DefaultIgnore;
+def warn_non_modular_include_in_module : Warning<
+  "include of non-modular header inside module '%0'">,
+  InGroup<NonModularIncludeInModule>, DefaultIgnore;
+def warn_non_modular_include : Warning<
+  "include of non-modular header">, InGroup<NonModularInclude>, DefaultIgnore;
 
 def warn_header_guard : Warning<
   "%0 is used as a header guard here, followed by #define of a different macro">,

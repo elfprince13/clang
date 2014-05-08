@@ -42,6 +42,7 @@ namespace llvm {
   class DataLayout;
   class FunctionType;
   class LLVMContext;
+  class IndexedInstrProfReader;
 }
 
 namespace clang {
@@ -82,10 +83,10 @@ namespace CodeGen {
   class CGDebugInfo;
   class CGObjCRuntime;
   class CGOpenCLRuntime;
+  class CGOpenMPRuntime;
   class CGCUDARuntime;
   class BlockFieldFlags;
   class FunctionArgList;
-  class PGOProfileData;
 
   struct OrderGlobalInits {
     unsigned int priority;
@@ -220,6 +221,15 @@ struct ARCEntrypoints {
   llvm::Constant *clang_arc_use;
 };
 
+/// This class records statistics on instrumentation based profiling.
+struct InstrProfStats {
+  InstrProfStats() : Visited(0), Missing(0), Mismatched(0) {}
+  bool isOutOfDate() { return Missing || Mismatched; }
+  uint32_t Visited;
+  uint32_t Missing;
+  uint32_t Mismatched;
+};
+
 /// CodeGenModule - This class organizes the cross-function state that is used
 /// while generating LLVM code.
 class CodeGenModule : public CodeGenTypeCache {
@@ -252,12 +262,14 @@ class CodeGenModule : public CodeGenTypeCache {
 
   CGObjCRuntime* ObjCRuntime;
   CGOpenCLRuntime* OpenCLRuntime;
+  CGOpenMPRuntime* OpenMPRuntime;
   CGCUDARuntime* CUDARuntime;
   CGDebugInfo* DebugInfo;
   ARCEntrypoints *ARCData;
   llvm::MDNode *NoObjCARCExceptionsMetadata;
   RREntrypoints *RRData;
-  PGOProfileData *PGOData;
+  std::unique_ptr<llvm::IndexedInstrProfReader> PGOReader;
+  InstrProfStats PGOStats;
 
   // WeakRefReferences - A set of references that have only been seen via
   // a weakref so far. This is used to remove the weak of the reference if we
@@ -404,6 +416,7 @@ class CodeGenModule : public CodeGenTypeCache {
   void createObjCRuntime();
 
   void createOpenCLRuntime();
+  void createOpenMPRuntime();
   void createCUDARuntime();
 
   bool isTriviallyRecursive(const FunctionDecl *F);
@@ -467,6 +480,12 @@ public:
     return *OpenCLRuntime;
   }
 
+  /// getOpenMPRuntime() - Return a reference to the configured OpenMP runtime.
+  CGOpenMPRuntime &getOpenMPRuntime() {
+    assert(OpenMPRuntime != nullptr);
+    return *OpenMPRuntime;
+  }
+
   /// getCUDARuntime() - Return a reference to the configured CUDA runtime.
   CGCUDARuntime &getCUDARuntime() {
     assert(CUDARuntime != 0);
@@ -483,9 +502,8 @@ public:
     return *RRData;
   }
 
-  PGOProfileData *getPGOData() const {
-    return PGOData;
-  }
+  InstrProfStats &getPGOStats() { return PGOStats; }
+  llvm::IndexedInstrProfReader *getPGOReader() const { return PGOReader.get(); }
 
   llvm::Constant *getStaticLocalDeclAddress(const VarDecl *D) {
     return StaticLocalDeclMap[D];
@@ -958,8 +976,8 @@ public:
 
   llvm::GlobalVariable::LinkageTypes getFunctionLinkage(GlobalDecl GD);
 
-  void setFunctionLinkage(GlobalDecl GD, llvm::GlobalValue *V) {
-    V->setLinkage(getFunctionLinkage(GD));
+  void setFunctionLinkage(GlobalDecl GD, llvm::Function *F) {
+    F->setLinkage(getFunctionLinkage(GD));
   }
 
   /// getVTableLinkage - Return the appropriate linkage for the vtable, VTT,
@@ -970,11 +988,16 @@ public:
   /// the given LLVM type.
   CharUnits GetTargetTypeStoreSize(llvm::Type *Ty) const;
   
-  /// GetLLVMLinkageVarDefinition - Returns LLVM linkage for a global 
-  /// variable.
-  llvm::GlobalValue::LinkageTypes 
-  GetLLVMLinkageVarDefinition(const VarDecl *D, bool isConstant);
-  
+  /// getLLVMLinkageforDeclarator - Returns LLVM linkage for a declarator.
+  llvm::GlobalValue::LinkageTypes
+  getLLVMLinkageforDeclarator(const DeclaratorDecl *D, GVALinkage Linkage,
+                              bool IsConstantVariable,
+                              bool UseThunkForDtorVariant);
+
+  /// getLLVMLinkageVarDefinition - Returns LLVM linkage for a declarator.
+  llvm::GlobalValue::LinkageTypes
+  getLLVMLinkageVarDefinition(const VarDecl *VD, bool IsConstant);
+
   /// Emit all the global annotations.
   void EmitGlobalAnnotations();
 
@@ -1036,9 +1059,11 @@ private:
   /// NOTE: This should only be called for definitions.
   void SetCommonAttributes(const Decl *D, llvm::GlobalValue *GV);
 
-  /// SetFunctionDefinitionAttributes - Set attributes for a global definition.
-  void SetFunctionDefinitionAttributes(const FunctionDecl *D,
-                                       llvm::GlobalValue *GV);
+  void setNonAliasAttributes(const Decl *D, llvm::GlobalValue *GV);
+
+  /// Set attributes for a global definition.
+  void setFunctionDefinitionAttributes(const FunctionDecl *D,
+                                       llvm::Function *F);
 
   /// SetFunctionAttributes - Set function attributes for a function
   /// declaration.

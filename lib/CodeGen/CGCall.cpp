@@ -700,8 +700,9 @@ static llvm::Value *CoerceIntOrPtrToIntOrPtr(llvm::Value *Val,
     if (DL.isBigEndian()) {
       // Preserve the high bits on big-endian targets.
       // That is what memory coercion does.
-      uint64_t SrcSize = DL.getTypeAllocSizeInBits(Val->getType());
-      uint64_t DstSize = DL.getTypeAllocSizeInBits(DestIntTy);
+      uint64_t SrcSize = DL.getTypeSizeInBits(Val->getType());
+      uint64_t DstSize = DL.getTypeSizeInBits(DestIntTy);
+
       if (SrcSize > DstSize) {
         Val = CGF.Builder.CreateLShr(Val, SrcSize - DstSize, "coerce.highbits");
         Val = CGF.Builder.CreateTrunc(Val, DestIntTy, "coerce.val.ii");
@@ -1090,6 +1091,8 @@ void CodeGenModule::ConstructAttributeList(const CGFunctionInfo &FI,
     FuncAttrs.addAttribute(llvm::Attribute::NoRedZone);
   if (CodeGenOpts.NoImplicitFloat)
     FuncAttrs.addAttribute(llvm::Attribute::NoImplicitFloat);
+  if (CodeGenOpts.EnableSegmentedStacks)
+    FuncAttrs.addAttribute("split-stack");
 
   if (AttrOnCallSite) {
     // Attributes that should go on the call site only.
@@ -2284,16 +2287,28 @@ void CodeGenFunction::EmitCallArg(CallArgList &args, const Expr *E,
   // In the Microsoft C++ ABI, aggregate arguments are destructed by the callee.
   // However, we still have to push an EH-only cleanup in case we unwind before
   // we make it to the call.
-  if (HasAggregateEvalKind && args.isUsingInAlloca()) {
-    assert(getTarget().getTriple().getArch() == llvm::Triple::x86);
-    AggValueSlot Slot = createPlaceholderSlot(*this, type);
-    Slot.setExternallyDestructed();
+  if (HasAggregateEvalKind &&
+      CGM.getTarget().getCXXABI().areArgsDestroyedLeftToRightInCallee()) {
+    // If we're using inalloca, use the argument memory.  Otherwise, use a
+    // temporary.
+    AggValueSlot Slot;
+    if (args.isUsingInAlloca())
+      Slot = createPlaceholderSlot(*this, type);
+    else
+      Slot = CreateAggTemp(type, "agg.tmp");
+
+    const CXXRecordDecl *RD = type->getAsCXXRecordDecl();
+    bool DestroyedInCallee =
+        RD && RD->hasNonTrivialDestructor() &&
+        CGM.getCXXABI().getRecordArgABI(RD) != CGCXXABI::RAA_Default;
+    if (DestroyedInCallee)
+      Slot.setExternallyDestructed();
+
     EmitAggExpr(E, Slot);
     RValue RV = Slot.asRValue();
     args.add(RV, type);
 
-    const CXXRecordDecl *RD = type->getAsCXXRecordDecl();
-    if (RD->hasNonTrivialDestructor()) {
+    if (DestroyedInCallee) {
       // Create a no-op GEP between the placeholder and the cleanup so we can
       // RAUW it successfully.  It also serves as a marker of the first
       // instruction where the cleanup is active.
@@ -2546,8 +2561,14 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
   // FIXME: Do this earlier rather than hacking it in here!
   llvm::Value *ArgMemory = 0;
   if (llvm::StructType *ArgStruct = CallInfo.getArgStruct()) {
-    llvm::AllocaInst *AI = new llvm::AllocaInst(
-        ArgStruct, "argmem", CallArgs.getStackBase()->getNextNode());
+    llvm::Instruction *IP = CallArgs.getStackBase();
+    llvm::AllocaInst *AI;
+    if (IP) {
+      IP = IP->getNextNode();
+      AI = new llvm::AllocaInst(ArgStruct, "argmem", IP);
+    } else {
+      AI = Builder.CreateAlloca(ArgStruct, nullptr, "argmem");
+    }
     AI->setUsedWithInAlloca(true);
     assert(AI->isUsedWithInAlloca() && !AI->isStaticAlloca());
     ArgMemory = AI;
@@ -2603,6 +2624,13 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
         // Store the RValue into the argument struct.
         llvm::Value *Addr =
             Builder.CreateStructGEP(ArgMemory, ArgInfo.getInAllocaFieldIndex());
+        unsigned AS = Addr->getType()->getPointerAddressSpace();
+        llvm::Type *MemType = ConvertTypeForMem(I->Ty)->getPointerTo(AS);
+        // There are some cases where a trivial bitcast is not avoidable.  The
+        // definition of a type later in a translation unit may change it's type
+        // from {}* to (%struct.foo*)*.
+        if (Addr->getType() != MemType)
+          Addr = Builder.CreateBitCast(Addr, MemType);
         LValue argLV = MakeAddrLValue(Addr, I->Ty, TypeAlign);
         EmitInitStoreOfNonAggregate(*this, RV, argLV);
       }

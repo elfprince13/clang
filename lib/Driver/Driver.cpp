@@ -190,10 +190,11 @@ const {
   return FinalPhase;
 }
 
-static Arg* MakeInputArg(const DerivedArgList &Args, OptTable *Opts,
+static Arg* MakeInputArg(DerivedArgList &Args, OptTable *Opts,
                          StringRef Value) {
   Arg *A = new Arg(Opts->getOption(options::OPT_INPUT), Value,
                    Args.getBaseArgs().MakeIndex(Value), Value.data());
+  Args.AddSynthesizedArg(A);
   A->claim();
   return A;
 }
@@ -447,12 +448,13 @@ void Driver::generateCompilationDiagnostics(Compilation &C,
     bool IgnoreInput = false;
 
     // Ignore input from stdin or any inputs that cannot be preprocessed.
-    if (!strcmp(it->second->getValue(), "-")) {
+    // Check type first as not all linker inputs have a value.
+   if (types::getPreprocessedType(it->first) == types::TY_INVALID) {
+      IgnoreInput = true;
+    } else if (!strcmp(it->second->getValue(), "-")) {
       Diag(clang::diag::note_drv_command_failed_diag_msg)
         << "Error generating preprocessed source(s) - ignoring input from stdin"
         ".";
-      IgnoreInput = true;
-    } else if (types::getPreprocessedType(it->first) == types::TY_INVALID) {
       IgnoreInput = true;
     }
 
@@ -955,7 +957,7 @@ static bool DiagnoseInputExistence(const Driver &D, const DerivedArgList &Args,
 }
 
 // Construct a the list of inputs and their types.
-void Driver::BuildInputs(const ToolChain &TC, const DerivedArgList &Args,
+void Driver::BuildInputs(const ToolChain &TC, DerivedArgList &Args,
                          InputList &Inputs) const {
   // Track the current user specified (-x) input. We also explicitly track the
   // argument used to set the type; we only want to claim the type when we
@@ -1862,18 +1864,28 @@ static llvm::Triple computeTargetTriple(StringRef DefaultTargetTriple,
     }
   }
 
-  // Handle pseudo-target flags '-EL' and '-EB'.
-  if (Arg *A = Args.getLastArg(options::OPT_EL, options::OPT_EB)) {
-    if (A->getOption().matches(options::OPT_EL)) {
+  // Handle pseudo-target flags '-mlittle-endian'/'-EL' and
+  // '-mbig-endian'/'-EB'.
+  if (Arg *A = Args.getLastArg(options::OPT_mlittle_endian,
+                               options::OPT_mbig_endian)) {
+    if (A->getOption().matches(options::OPT_mlittle_endian)) {
       if (Target.getArch() == llvm::Triple::mips)
         Target.setArch(llvm::Triple::mipsel);
       else if (Target.getArch() == llvm::Triple::mips64)
         Target.setArch(llvm::Triple::mips64el);
+      else if (Target.getArch() == llvm::Triple::aarch64_be)
+        Target.setArch(llvm::Triple::aarch64);
+      else if (Target.getArch() == llvm::Triple::arm64_be)
+        Target.setArch(llvm::Triple::arm64);
     } else {
       if (Target.getArch() == llvm::Triple::mipsel)
         Target.setArch(llvm::Triple::mips);
       else if (Target.getArch() == llvm::Triple::mips64el)
         Target.setArch(llvm::Triple::mips64);
+      else if (Target.getArch() == llvm::Triple::aarch64)
+        Target.setArch(llvm::Triple::aarch64_be);
+      else if (Target.getArch() == llvm::Triple::arm64)
+        Target.setArch(llvm::Triple::arm64_be);
     }
   }
 

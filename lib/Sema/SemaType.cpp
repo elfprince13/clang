@@ -24,7 +24,6 @@
 #include "clang/AST/TypeLocVisitor.h"
 #include "clang/Basic/PartialDiagnostic.h"
 #include "clang/Basic/TargetInfo.h"
-#include "clang/Lex/Preprocessor.h"
 #include "clang/Parse/ParseDiagnostic.h"
 #include "clang/Sema/DeclSpec.h"
 #include "clang/Sema/DelayedDiagnostic.h"
@@ -852,7 +851,7 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
     break;
   }
   case DeclSpec::TST_int128:
-    if (!S.PP.getTargetInfo().hasInt128Type())
+    if (!S.Context.getTargetInfo().hasInt128Type())
       S.Diag(DS.getTypeSpecTypeLoc(), diag::err_int128_unsupported);
     if (DS.getTypeSpecSign() == DeclSpec::TSS_unsigned)
       Result = Context.UnsignedInt128Ty;
@@ -2396,7 +2395,7 @@ static void warnAboutAmbiguousFunction(Sema &S, Declarator &D,
     // declaration.
     SourceRange Range = FTI.Params[0].Param->getSourceRange();
     SourceLocation B = Range.getBegin();
-    SourceLocation E = S.PP.getLocForEndOfToken(Range.getEnd());
+    SourceLocation E = S.getLocForEndOfToken(Range.getEnd());
     // FIXME: Maybe we should suggest adding braces instead of parens
     // in C++11 for classes that don't have an initializer_list constructor.
     S.Diag(B, diag::note_additional_parens_for_variable_declaration)
@@ -2763,10 +2762,10 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
         SourceLocation DiagLoc, FixitLoc;
         if (TInfo) {
           DiagLoc = TInfo->getTypeLoc().getLocStart();
-          FixitLoc = S.PP.getLocForEndOfToken(TInfo->getTypeLoc().getLocEnd());
+          FixitLoc = S.getLocForEndOfToken(TInfo->getTypeLoc().getLocEnd());
         } else {
           DiagLoc = D.getDeclSpec().getTypeSpecTypeLoc();
-          FixitLoc = S.PP.getLocForEndOfToken(D.getDeclSpec().getLocEnd());
+          FixitLoc = S.getLocForEndOfToken(D.getDeclSpec().getLocEnd());
         }
         S.Diag(DiagLoc, diag::err_object_cannot_be_passed_returned_by_value)
           << 0 << T
@@ -4731,7 +4730,8 @@ static bool isPermittedNeonBaseType(QualType &Ty,
   // now.
   bool IsPolyUnsigned = Triple.getArch() == llvm::Triple::aarch64 ||
                         Triple.getArch() == llvm::Triple::aarch64_be ||
-                        Triple.getArch() == llvm::Triple::arm64;
+                        Triple.getArch() == llvm::Triple::arm64 ||
+                        Triple.getArch() == llvm::Triple::arm64_be;
   if (VecKind == VectorType::NeonPolyVector) {
     if (IsPolyUnsigned) {
       // AArch64 polynomial vectors are unsigned and support poly64.
@@ -4750,7 +4750,8 @@ static bool isPermittedNeonBaseType(QualType &Ty,
   // float64_t on AArch64.
   bool Is64Bit = Triple.getArch() == llvm::Triple::aarch64 ||
                  Triple.getArch() == llvm::Triple::aarch64_be ||
-                 Triple.getArch() == llvm::Triple::arm64;
+                 Triple.getArch() == llvm::Triple::arm64 ||
+                 Triple.getArch() == llvm::Triple::arm64_be;
 
   if (Is64Bit && BTy->getKind() == BuiltinType::Double)
     return true;
@@ -5075,6 +5076,69 @@ bool Sema::RequireCompleteType(SourceLocation Loc, QualType T,
   return false;
 }
 
+/// \brief Determine whether there is any declaration of \p D that was ever a
+///        definition (perhaps before module merging) and is currently visible.
+/// \param D The definition of the entity.
+/// \param Suggested Filled in with the declaration that should be made visible
+///        in order to provide a definition of this entity.
+static bool hasVisibleDefinition(Sema &S, NamedDecl *D, NamedDecl **Suggested) {
+  // Easy case: if we don't have modules, all declarations are visible.
+  if (!S.getLangOpts().Modules)
+    return true;
+
+  // If this definition was instantiated from a template, map back to the
+  // pattern from which it was instantiated.
+  //
+  // FIXME: There must be a better place for this to live.
+  if (auto *RD = dyn_cast<CXXRecordDecl>(D)) {
+    if (auto *TD = dyn_cast<ClassTemplateSpecializationDecl>(RD)) {
+      auto From = TD->getInstantiatedFrom();
+      if (auto *CTD = From.dyn_cast<ClassTemplateDecl*>()) {
+        while (auto *NewCTD = CTD->getInstantiatedFromMemberTemplate()) {
+          if (NewCTD->isMemberSpecialization())
+            break;
+          CTD = NewCTD;
+        }
+        RD = CTD->getTemplatedDecl();
+      } else if (auto *CTPSD = From.dyn_cast<
+                     ClassTemplatePartialSpecializationDecl *>()) {
+        while (auto *NewCTPSD = CTPSD->getInstantiatedFromMember()) {
+          if (NewCTPSD->isMemberSpecialization())
+            break;
+          CTPSD = NewCTPSD;
+        }
+        RD = CTPSD;
+      }
+    } else if (isTemplateInstantiation(RD->getTemplateSpecializationKind())) {
+      while (auto *NewRD = RD->getInstantiatedFromMemberClass())
+        RD = NewRD;
+    }
+    D = RD->getDefinition();
+  } else if (auto *ED = dyn_cast<EnumDecl>(D)) {
+    while (auto *NewED = ED->getInstantiatedFromMemberEnum())
+      ED = NewED;
+    if (ED->isFixed()) {
+      // If the enum has a fixed underlying type, any declaration of it will do.
+      *Suggested = 0;
+      for (auto *Redecl : ED->redecls()) {
+        if (LookupResult::isVisible(S, Redecl))
+          return true;
+        if (Redecl->isThisDeclarationADefinition() ||
+            (Redecl->isCanonicalDecl() && !*Suggested))
+          *Suggested = Redecl;
+      }
+      return false;
+    }
+    D = ED->getDefinition();
+  }
+  assert(D && "missing definition for pattern of instantiated definition");
+
+  // FIXME: If we merged any other decl into D, and that declaration is visible,
+  // then we should consider a definition to be visible.
+  *Suggested = D;
+  return LookupResult::isVisible(S, D);
+}
+
 /// \brief The implementation of RequireCompleteType
 bool Sema::RequireCompleteTypeImpl(SourceLocation Loc, QualType T,
                                    TypeDiagnoser &Diagnoser) {
@@ -5090,21 +5154,21 @@ bool Sema::RequireCompleteTypeImpl(SourceLocation Loc, QualType T,
   NamedDecl *Def = 0;
   if (!T->isIncompleteType(&Def)) {
     // If we know about the definition but it is not visible, complain.
-    if (!Diagnoser.Suppressed && Def && !LookupResult::isVisible(*this, Def)) {
+    NamedDecl *SuggestedDef = 0;
+    if (!Diagnoser.Suppressed && Def &&
+        !hasVisibleDefinition(*this, Def, &SuggestedDef)) {
       // Suppress this error outside of a SFINAE context if we've already
       // emitted the error once for this type. There's no usefulness in
       // repeating the diagnostic.
       // FIXME: Add a Fix-It that imports the corresponding module or includes
       // the header.
-      Module *Owner = Def->getOwningModule();
+      Module *Owner = SuggestedDef->getOwningModule();
       Diag(Loc, diag::err_module_private_definition)
         << T << Owner->getFullModuleName();
-      Diag(Def->getLocation(), diag::note_previous_definition);
+      Diag(SuggestedDef->getLocation(), diag::note_previous_definition);
 
-      if (!isSFINAEContext()) {
-        // Recover by implicitly importing this module.
-        createImplicitModuleImport(Loc, Owner);
-      }
+      // Try to recover by implicitly importing this module.
+      createImplicitModuleImportForErrorRecovery(Loc, Owner);
     }
 
     // We lock in the inheritance model once somebody has asked us to ensure

@@ -444,6 +444,9 @@ void ASTDumper::dumpPointer(const void *Ptr) {
 }
 
 void ASTDumper::dumpLocation(SourceLocation Loc) {
+  if (!SM)
+    return;
+
   ColorScope Color(*this, LocationColor);
   SourceLocation SpellingLoc = SM->getSpellingLoc(Loc);
 
@@ -792,6 +795,8 @@ void ASTDumper::dumpDecl(const Decl *D) {
     OS << " parent " << cast<Decl>(D->getDeclContext());
   dumpPreviousDecl(OS, D);
   dumpSourceRange(D->getSourceRange());
+  OS << ' ';
+  dumpLocation(D->getLocation());
   if (Module *M = D->getOwningModule())
     OS << " in " << M->getFullModuleName();
   if (const NamedDecl *ND = dyn_cast<NamedDecl>(D))
@@ -1682,6 +1687,7 @@ void ASTDumper::VisitPredefinedExpr(const PredefinedExpr *Node) {
   case PredefinedExpr::FuncDName:      OS <<  " __FUNCDNAME__"; break;
   case PredefinedExpr::LFunction:      OS <<  " L__FUNCTION__"; break;
   case PredefinedExpr::PrettyFunction: OS <<  " __PRETTY_FUNCTION__";break;
+  case PredefinedExpr::FuncSig:        OS <<  " __FUNCSIG__"; break;
   }
 }
 

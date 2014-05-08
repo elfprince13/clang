@@ -830,9 +830,8 @@ def NonNull : InheritableAttr {
   let Args = [VariadicUnsignedArgument<"Args">];
   let AdditionalMembers =
 [{bool isNonNull(unsigned idx) const {
-    for (args_iterator i = args_begin(), e = args_end();
-         i != e; ++i)
-      if (*i == idx)
+    for (const auto &V : args())
+      if (V == idx)
         return true;
     return false;
   } }];
@@ -975,6 +974,12 @@ def ObjCDesignatedInitializer : Attr {
   let Documentation = [Undocumented];
 }
 
+def OptimizeNone : InheritableAttr {
+  let Spellings = [GNU<"optnone">, CXX11<"clang", "optnone">];
+  let Subjects = SubjectList<[Function, ObjCMethod]>;
+  let Documentation = [OptnoneDocs];
+}
+
 def Overloadable : Attr {
   let Spellings = [GNU<"overloadable">];
   let Subjects = SubjectList<[Function], ErrorDiag>;
@@ -1030,7 +1035,7 @@ def Pcs : InheritableAttr {
                            ["aapcs", "aapcs-vfp"],
                            ["AAPCS", "AAPCS_VFP"]>];
 //  let Subjects = [Function, ObjCMethod];
-  let Documentation = [Undocumented];
+  let Documentation = [PcsDocs];
 }
 
 def Pure : InheritableAttr {
@@ -1069,7 +1074,7 @@ def InitPriority : InheritableAttr {
 }
 
 def Section : InheritableAttr {
-  let Spellings = [GCC<"section">];
+  let Spellings = [GCC<"section">, Declspec<"allocate">];
   let Args = [StringArgument<"Name">];
   let Subjects = SubjectList<[Function, GlobalVar, 
                               ObjCMethod, ObjCProperty], ErrorDiag,
@@ -1562,7 +1567,7 @@ def ConsumableSetOnRead : InheritableAttr {
 def CallableWhen : InheritableAttr {
   let Spellings = [GNU<"callable_when">];
   let Subjects = SubjectList<[CXXMethod]>;
-  let Args = [VariadicEnumArgument<"CallableState", "ConsumedState",
+  let Args = [VariadicEnumArgument<"CallableStates", "ConsumedState",
                                    ["unknown", "consumed", "unconsumed"],
                                    ["Unknown", "Consumed", "Unconsumed"]>];
   let Documentation = [CallableWhenDocs];
@@ -1659,6 +1664,13 @@ def SelectAny : InheritableAttr {
   let Documentation = [Undocumented];
 }
 
+def Thread : Attr {
+  let Spellings = [Declspec<"thread">];
+  let LangOpts = [MicrosoftExt];
+  let Documentation = [ThreadDocs];
+  let Subjects = SubjectList<[Var]>;
+}
+
 def Win64 : IgnoredAttr {
   let Spellings = [Keyword<"__w64">];
   let LangOpts = [MicrosoftExt];
@@ -1691,6 +1703,7 @@ def MSInheritance : InheritableAttr {
                    Keyword<"__multiple_inheritance">,
                    Keyword<"__virtual_inheritance">,
                    Keyword<"__unspecified_inheritance">];
+  let Documentation = [SectionDocs];
   let AdditionalMembers = [{
   static bool hasVBPtrOffsetField(Spelling Inheritance) {
     return Inheritance == Keyword_unspecified_inheritance;

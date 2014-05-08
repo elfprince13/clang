@@ -11,6 +11,7 @@
 //  modules for the ASTReader.
 //
 //===----------------------------------------------------------------------===//
+#include "clang/Lex/HeaderSearch.h"
 #include "clang/Lex/ModuleMap.h"
 #include "clang/Serialization/GlobalModuleIndex.h"
 #include "clang/Serialization/ModuleManager.h"
@@ -155,7 +156,7 @@ void ModuleManager::removeModules(ModuleIterator first, ModuleIterator last,
 
     FileMgr.invalidateCache((*victim)->File);
     if (modMap) {
-      StringRef ModuleName = llvm::sys::path::stem((*victim)->FileName);
+      StringRef ModuleName = (*victim)->ModuleName;
       if (Module *mod = modMap->findModule(ModuleName)) {
         mod->setASTFile(0);
       }
@@ -380,16 +381,19 @@ bool ModuleManager::lookupModuleFile(StringRef FileName,
                                      off_t ExpectedSize,
                                      time_t ExpectedModTime,
                                      const FileEntry *&File) {
-  File = FileMgr.getFile(FileName, /*openFile=*/false, /*cacheFailure=*/false);
+  // Open the file immediately to ensure there is no race between stat'ing and
+  // opening the file.
+  File = FileMgr.getFile(FileName, /*openFile=*/true, /*cacheFailure=*/false);
 
   if (!File && FileName != "-") {
     return false;
   }
 
   if ((ExpectedSize && ExpectedSize != File->getSize()) ||
-      (ExpectedModTime && ExpectedModTime != File->getModificationTime())) {
+      (ExpectedModTime && ExpectedModTime != File->getModificationTime()))
+    // Do not destroy File, as it may be referenced. If we need to rebuild it,
+    // it will be destroyed by removeModules.
     return true;
-  }
 
   return false;
 }
@@ -429,7 +433,7 @@ namespace llvm {
     }
 
     std::string getNodeLabel(ModuleFile *M, const ModuleManager&) {
-      return llvm::sys::path::stem(M->FileName);
+      return M->ModuleName;
     }
   };
 }

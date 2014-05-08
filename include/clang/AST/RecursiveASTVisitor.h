@@ -2417,6 +2417,11 @@ bool RecursiveASTVisitor<Derived>::VisitOMPDefaultClause(OMPDefaultClause *C) {
 }
 
 template<typename Derived>
+bool RecursiveASTVisitor<Derived>::VisitOMPProcBindClause(OMPProcBindClause *C) {
+  return true;
+}
+
+template<typename Derived>
 template<typename T>
 void RecursiveASTVisitor<Derived>::VisitOMPClauseList(T *Node) {
   for (auto *I : Node->varlists())
@@ -2438,6 +2443,19 @@ bool RecursiveASTVisitor<Derived>::VisitOMPFirstprivateClause(
 
 template<typename Derived>
 bool RecursiveASTVisitor<Derived>::VisitOMPSharedClause(OMPSharedClause *C) {
+  VisitOMPClauseList(C);
+  return true;
+}
+
+template<typename Derived>
+bool RecursiveASTVisitor<Derived>::VisitOMPLinearClause(OMPLinearClause *C) {
+  VisitOMPClauseList(C);
+  TraverseStmt(C->getStep());
+  return true;
+}
+
+template<typename Derived>
+bool RecursiveASTVisitor<Derived>::VisitOMPCopyinClause(OMPCopyinClause *C) {
   VisitOMPClauseList(C);
   return true;
 }

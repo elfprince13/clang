@@ -47,7 +47,7 @@ class DiagnosticsEngine;
 /// When errors are encountered, return false and, if Diags is non-null,
 /// report the error(s).
 bool ParseDiagnosticArgs(DiagnosticOptions &Opts, llvm::opt::ArgList &Args,
-                         DiagnosticsEngine *Diags = 0);
+                         DiagnosticsEngine *Diags = nullptr);
 
 class CompilerInvocationBase : public RefCountedBase<CompilerInvocation> {
 protected:
@@ -203,6 +203,14 @@ public:
 
   /// @}
 };
+
+namespace vfs {
+  class FileSystem;
+}
+
+IntrusiveRefCntPtr<vfs::FileSystem>
+createVFSFromCompilerInvocation(const CompilerInvocation &CI,
+                                DiagnosticsEngine &Diags);
 
 } // end namespace clang
 
