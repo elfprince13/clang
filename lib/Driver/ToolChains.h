@@ -145,13 +145,6 @@ protected:
                                 const std::string &LibDir,
                                 StringRef CandidateTriple,
                                 bool NeedsBiarchSuffix = false);
-
-    bool findMIPSMultilibs(const llvm::Triple &TargetArch, StringRef Path,
-                           const llvm::opt::ArgList &Args);
-
-    bool findBiarchMultilibs(const llvm::Triple &TargetArch, StringRef Path,
-                             const llvm::opt::ArgList &Args,
-                             bool NeedsBiarchSuffix);
   };
 
   GCCInstallationDetector GCCInstallation;
@@ -541,7 +534,7 @@ public:
   bool isPIEDefault() const override { return true; }
 
   unsigned GetDefaultStackProtectorLevel(bool KernelOrKext) const override {
-    return 1;
+    return 2;
   }
 
 protected:

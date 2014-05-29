@@ -205,7 +205,7 @@ def err_expected_semi_after_static_assert : Error<
   "expected ';' after static_assert">;
 def err_expected_semi_for : Error<"expected ';' in 'for' statement specifier">;
 def err_single_decl_assign_in_for_range : Error<
-  "range based for statement requires ':' after range declaration">;
+  "range-based 'for' statement uses ':', not '='">;
 def warn_missing_selector_name : Warning<
   "%0 used as the name of the previous parameter rather than as part "
   "of the selector">,
@@ -843,6 +843,14 @@ def err_pragma_detect_mismatch_malformed : Error<
 def err_pragma_pointers_to_members_unknown_kind : Error<
   "unexpected %0, expected to see one of %select{|'best_case', 'full_generality', }1"
   "'single_inheritance', 'multiple_inheritance', or 'virtual_inheritance'">;
+// - #pragma clang optimize on/off
+def err_pragma_optimize_missing_argument : Error<
+  "missing argument to '#pragma clang optimize'; expected 'on' or 'off'">;
+def err_pragma_optimize_invalid_argument : Error<
+  "unexpected argument '%0' to '#pragma clang optimize'; "
+  "expected 'on' or 'off'">;
+def err_pragma_optimize_extra_argument : Error<
+  "unexpected extra argument '%0' to '#pragma clang optimize'">;
 
 // OpenCL Section 6.8.g
 def err_not_opencl_storage_class_specifier : Error<

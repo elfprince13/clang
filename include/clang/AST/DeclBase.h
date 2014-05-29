@@ -16,7 +16,6 @@
 
 #include "clang/AST/AttrIterator.h"
 #include "clang/AST/DeclarationName.h"
-#include "clang/Basic/Linkage.h"
 #include "clang/Basic/Specifiers.h"
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/ADT/iterator_range.h"
@@ -34,6 +33,7 @@ class DependentDiagnostic;
 class EnumDecl;
 class FunctionDecl;
 class FunctionType;
+enum Linkage : unsigned char;
 class LinkageComputer;
 class LinkageSpecDecl;
 class Module;
@@ -397,6 +397,8 @@ public:
 
   bool isInAnonymousNamespace() const;
 
+  bool isInStdNamespace() const;
+
   ASTContext &getASTContext() const LLVM_READONLY;
 
   void setAccess(AccessSpecifier AS) {
@@ -713,16 +715,16 @@ protected:
   ///
   /// Decl subclasses that can be redeclared should override this method so that
   /// Decl::redecl_iterator can iterate over them.
-  virtual Decl *getNextRedeclaration() { return this; }
+  virtual Decl *getNextRedeclarationImpl() { return this; }
 
   /// \brief Implementation of getPreviousDecl(), to be overridden by any
   /// subclass that has a redeclaration chain.
   virtual Decl *getPreviousDeclImpl() { return nullptr; }
-  
+
   /// \brief Implementation of getMostRecentDecl(), to be overridden by any
-  /// subclass that has a redeclaration chain.  
+  /// subclass that has a redeclaration chain.
   virtual Decl *getMostRecentDeclImpl() { return this; }
-  
+
 public:
   /// \brief Iterates through all the redeclarations of the same decl.
   class redecl_iterator {
@@ -746,7 +748,7 @@ public:
     redecl_iterator& operator++() {
       assert(Current && "Advancing while iterator has reached end");
       // Get either previous decl or latest decl.
-      Decl *Next = Current->getNextRedeclaration();
+      Decl *Next = Current->getNextRedeclarationImpl();
       assert(Next && "Should return next redeclaration or itself, never null!");
       Current = (Next != Starter) ? Next : nullptr;
       return *this;
@@ -1155,6 +1157,8 @@ public:
   bool isNamespace() const {
     return DeclKind == Decl::Namespace;
   }
+
+  bool isStdNamespace() const;
 
   bool isInlineNamespace() const;
 

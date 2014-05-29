@@ -14,11 +14,15 @@
 #ifndef LLVM_CLANG_THREAD_SAFETY_UTIL_H
 #define LLVM_CLANG_THREAD_SAFETY_UTIL_H
 
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/AlignOf.h"
 #include "llvm/Support/Allocator.h"
+#include "llvm/Support/Compiler.h"
+#include "clang/AST/ExprCXX.h"
 
 #include <cassert>
 #include <cstddef>
+#include <vector>
 #include <utility>
 
 namespace clang {
@@ -68,9 +72,14 @@ inline void *operator new(size_t Sz,
 
 namespace clang {
 namespace threadSafety {
-namespace til {
+
+std::string getSourceLiteralString(const clang::Expr *CE);
 
 using llvm::StringRef;
+using clang::SourceLocation;
+
+namespace til {
+
 
 // A simple fixed size array class that does not manage its own memory,
 // suitable for use with bump pointer allocation.
@@ -100,14 +109,23 @@ public:
     return *this;
   }
 
+  // Reserve space for at least Ncp items, reallocating if necessary.
   void reserve(size_t Ncp, MemRegionRef A) {
-    if (Ncp < Capacity)
+    if (Ncp <= Capacity)
       return;
     T *Odata = Data;
     Data = A.allocateT<T>(Ncp);
     Capacity = Ncp;
     memcpy(Data, Odata, sizeof(T) * Size);
     return;
+  }
+
+  // Reserve space for at least N more items.
+  void reserveCheck(size_t N, MemRegionRef A) {
+    if (Capacity == 0)
+      reserve(InitialCapacity, A);
+    else if (Size + N < Capacity)
+      reserve(Capacity*2, A);
   }
 
   typedef T *iterator;
@@ -154,6 +172,8 @@ public:
   }
 
 private:
+  static const unsigned InitialCapacity = 4;
+
   SimpleArray(const SimpleArray<T> &A) LLVM_DELETED_FUNCTION;
 
   T *Data;
@@ -161,7 +181,7 @@ private:
   size_t Capacity;
 };
 
-} // end namespace til
+}  // end namespace til
 
 
 // A copy on write vector.

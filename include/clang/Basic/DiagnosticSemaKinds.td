@@ -14,6 +14,11 @@
 let Component = "Sema" in {
 let CategoryName = "Semantic Issue" in {
 
+def note_previous_decl : Note<"%0 declared here">;
+def note_entity_declared_at : Note<"%0 declared here">;
+def note_callee_decl : Note<"%0 declared here">;
+def note_defined_here : Note<"%0 defined here">;
+
 // For loop analysis
 def warn_variables_not_in_loop_body : Warning<
   "variable%select{s| %1|s %1 and %2|s %1, %2, and %3|s %1, %2, %3, and %4}0 "
@@ -234,8 +239,8 @@ def ext_implicit_function_decl : ExtWarn<
   InGroup<ImplicitFunctionDeclare>;
 def note_function_suggestion : Note<"did you mean %0?">;
 
-def err_ellipsis_first_arg : Error<
-  "ISO C requires a named argument before '...'">;
+def err_ellipsis_first_param : Error<
+  "ISO C requires a named parameter before '...'">;
 def err_declarator_need_ident : Error<"declarator requires an identifier">;
 def err_language_linkage_spec_unknown : Error<"unknown linkage language">;
 def err_language_linkage_spec_not_ascii : Error<
@@ -433,9 +438,9 @@ def note_strlcpycat_wrong_size : Note<
 def warn_memsize_comparison : Warning<
   "size argument in %0 call is a comparison">,
   InGroup<DiagGroup<"memsize-comparison">>;
-def warn_memsize_comparison_paren_note : Note<
+def note_memsize_comparison_paren : Note<
   "did you mean to compare the result of %0 instead?">;
-def warn_memsize_comparison_cast_note : Note<
+def note_memsize_comparison_cast_silence : Note<
   "explicitly cast the argument to size_t to silence this warning">;
   
 def warn_strncat_large_size : Warning<
@@ -498,8 +503,8 @@ def err_opencl_half_load_store : Error<
 def err_opencl_cast_to_half : Error<"casting to type %0 is not allowed">;
 def err_opencl_half_declaration : Error<
   "declaring variable of type %0 is not allowed">;
-def err_opencl_half_argument : Error<
-  "declaring function argument of type %0 is not allowed; did you forget * ?">;
+def err_opencl_half_param : Error<
+  "declaring function parameter of type %0 is not allowed; did you forget * ?">;
 def err_opencl_half_return : Error<
   "declaring function return value of type %0 is not allowed; did you forget * ?">;
 def warn_enum_value_overflow : Warning<"overflow in enumeration value">;
@@ -1222,10 +1227,9 @@ def warn_call_to_pure_virtual_member_function_from_ctor_dtor : Warning<
   "call to pure virtual member function %0; overrides of %0 in subclasses are "
   "not available in the %select{constructor|destructor}1 of %2">;
 
-def note_field_decl : Note<"member is declared here">;
+def note_member_declared_at : Note<"member is declared here">;
 def note_ivar_decl : Note<"instance variable is declared here">;
 def note_bitfield_decl : Note<"bit-field is declared here">;
-def note_previous_decl : Note<"%0 declared here">;
 def note_implicit_param_decl : Note<"%0 is an implicit parameter">;
 def note_member_synthesized_at : Note<
   "implicit %select{default constructor|copy constructor|move constructor|copy "
@@ -1862,8 +1866,6 @@ def warn_auto_var_is_id : Warning<
 // Attributes
 def err_nsobject_attribute : Error<
   "'NSObject' attribute is for pointer types only">;
-def err_attribute_can_be_applied_only_to_symbol_declaration : Error<
-  "%0 attribute can be applied only to symbol declaration">;
 def err_attributes_are_not_compatible : Error<
   "%0 and %1 attributes are not compatible">;
 def err_attribute_wrong_number_arguments : Error<
@@ -2004,6 +2006,11 @@ def warn_concatenated_nsarray_literal : Warning<
   InGroup<ObjCStringConcatenation>;
 def note_objc_literal_comparison_isequal : Note<
   "use 'isEqual:' instead">;
+def err_attribute_argument_is_zero : Error<
+  "%0 attribute must be greater than 0">;
+def err_property_function_in_objc_container : Error<
+  "use of Objective-C property in function nested in Objective-C "
+  "container not supported, move function outside its container">;
 
 let CategoryName = "Cocoa API Issue" in {
 def warn_objc_redundant_literal_use : Warning<
@@ -2035,7 +2042,7 @@ def err_attribute_aligned_not_power_of_two : Error<
 def err_attribute_aligned_too_great : Error<
   "requested alignment must be %0 bytes or smaller">;
 def warn_redeclaration_without_attribute_prev_attribute_ignored : Warning<
-  "%0 redeclared without %1 attribute: previous %1 ignored">;
+  "%q0 redeclared without %1 attribute: previous %1 ignored">;
 def warn_attribute_ignored : Warning<"%0 attribute ignored">,
   InGroup<IgnoredAttributes>;
 def warn_attribute_after_definition_ignored : Warning<
@@ -2091,8 +2098,14 @@ def warn_attribute_invalid_on_definition : Warning<
   InGroup<IgnoredAttributes>;
 def err_attribute_dll_redeclaration : Error<
   "redeclaration of %q0 cannot add %q1 attribute">;
+def err_attribute_dllimport_function_definition : Error<
+  "dllimport cannot be applied to non-inline function definition">;
+def err_attribute_dll_deleted : Error<
+  "attribute %q0 cannot be applied to a deleted function">;
 def err_attribute_dllimport_data_definition : Error<
   "definition of dllimport data">;
+def err_attribute_dllimport_static_field_definition : Error<
+  "definition of dllimport static field not allowed">;
 def err_attribute_weakref_not_static : Error<
   "weakref declaration must have internal linkage">;
 def err_attribute_weakref_not_global_context : Error<
@@ -2434,6 +2447,7 @@ def warn_attribute_protected_visibility :
   InGroup<DiagGroup<"unsupported-visibility">>;
 def err_mismatched_visibility: Error<"visibility does not match previous declaration">;
 def note_previous_attribute : Note<"previous attribute is here">;
+def note_attribute : Note<"attribute is here">;
 def err_mismatched_ms_inheritance : Error<
   "inheritance model does not match %select{definition|previous declaration}0">;
 def warn_ignored_ms_inheritance : Warning<
@@ -3059,7 +3073,6 @@ def err_template_arg_list_different_arity : Error<
   "%select{class template|function template|template template parameter"
   "|template}1 %2">;
 def note_template_decl_here : Note<"template is declared here">;
-def note_member_of_template_here : Note<"member is declared here">;
 def err_template_arg_must_be_type : Error<
   "template argument for template type parameter must be a type">;
 def err_template_arg_must_be_type_suggest : Error<
@@ -3396,6 +3409,9 @@ def err_nested_name_spec_non_tag : Error<
 // C++ Explicit Instantiation
 def err_explicit_instantiation_duplicate : Error<
     "duplicate explicit instantiation of %0">;
+def warn_explicit_instantiation_duplicate : ExtWarn<
+    "duplicate explicit instantiation of %0 ignored as a Microsoft extension">,
+    InGroup<Microsoft>;
 def note_previous_explicit_instantiation : Note<
     "previous explicit instantiation is here">;
 def ext_explicit_instantiation_after_specialization : Extension<
@@ -3721,8 +3737,6 @@ def warn_static_local_in_extern_inline : Warning<
   "in different files">, InGroup<StaticLocalInInline>;
 def note_convert_inline_to_static : Note<
   "use 'static' to give inline function %0 internal linkage">;
-def note_internal_decl_declared_here : Note<
-  "%0 declared here">;
 
 def warn_redefinition_of_typedef : ExtWarn<
   "redefinition of typedef %0 is a C11 feature">,
@@ -3948,8 +3962,8 @@ def warn_init_list_constant_narrowing : Warning<
   "constant expression evaluates to %0 which cannot be narrowed to type %1 in "
   "C++11">,
   InGroup<CXX11Narrowing>, DefaultIgnore;
-def note_init_list_narrowing_override : Note<
-  "override this message by inserting an explicit cast">;
+def note_init_list_narrowing_silence : Note<
+  "insert an explicit cast to silence this issue">;
 def err_init_objc_class : Error<
   "cannot initialize Objective-C class type %0">;
 def err_implicit_empty_initializer : Error<
@@ -4651,8 +4665,6 @@ def ext_deprecated_string_literal_conversion : ExtWarn<
 def err_realimag_invalid_type : Error<"invalid type %0 to %1 operator">;
 def err_typecheck_sclass_fscope : Error<
   "illegal storage class on file-scoped variable">;
-def err_unsupported_global_register : Error<
-  "global register variables are not supported">;
 def warn_standalone_specifier : Warning<"'%0' ignored on this declaration">,
   InGroup<MissingDeclarations>;
 def ext_standalone_specifier : ExtWarn<"'%0' is not permitted on a declaration "
@@ -5349,8 +5361,6 @@ def err_typecheck_deleted_function : Error<
   
 def err_expected_class_or_namespace : Error<"%0 is not a class"
   "%select{ or namespace|, namespace, or scoped enumeration}1">;
-def note_expected_class_or_namespace_declared_here : Note<
-  "%0 declared here">;
 def err_invalid_declarator_scope : Error<"cannot define or redeclare %0 here "
   "because namespace %1 does not enclose namespace %2">;
 def err_invalid_declarator_global_scope : Error<
@@ -5645,8 +5655,6 @@ def err_call_incomplete_return : Error<
   "calling function with incomplete return type %0">;
 def err_call_function_incomplete_return : Error<
   "calling %0 with incomplete return type %1">;
-def note_function_with_incomplete_return_type_declared_here : Note<
-  "%0 declared here">;
 def err_call_incomplete_argument : Error<
   "argument type %0 is incomplete">;
 def err_typecheck_call_too_few_args : Error<
@@ -5702,10 +5710,6 @@ def err_arc_typecheck_convert_incompatible_pointer : Error<
   "incompatible pointer types passing retainable parameter of type %0"
   "to a CF function expecting %1 type">;
   
-def note_callee_decl : Note<
-  "%0 declared here">;
-def note_defined_here : Note<"%0 defined here">;
-
 def err_builtin_fn_use : Error<"builtin functions must be directly called">;
 
 def warn_call_wrong_number_of_arguments : Warning<
@@ -5821,6 +5825,10 @@ def err_cast_pointer_from_non_pointer_int : Error<
 def warn_cast_pointer_from_sel : Warning<
   "cast of type %0 to %1 is deprecated; use sel_getName instead">,
   InGroup<SelTypeCast>;
+def warn_function_def_in_objc_container : Warning<
+  "function definition inside an Objective-C container is deprecated">,
+  InGroup<FunctionDefInObjCContainer>;
+  
 def warn_bad_function_cast : Warning<
   "cast from function call of type %0 to non-matching type %1">,
   InGroup<BadFunctionCast>, DefaultIgnore;
@@ -6057,8 +6065,6 @@ def err_reference_to_local_var_in_enclosing_lambda : Error<
 def err_reference_to_local_var_in_enclosing_context : Error<
   "reference to local variable %0 declared in enclosing context">;
 
-def note_local_variable_declared_here : Note<
-  "%0 declared here">;
 def err_static_data_member_not_allowed_in_local_class : Error<
   "static data member %0 not allowed in local class %1">; 
   
@@ -6398,6 +6404,9 @@ def note_ref_subobject_of_member_declared_here : Note<
 // Array comparisons have similar warnings
 def warn_comparison_always : Warning<
   "%select{self-|array }0comparison always evaluates to %select{false|true|a constant}1">,
+  InGroup<TautologicalCompare>;
+def warn_comparison_bitwise_always : Warning<
+  "bitwise comparison always evaluates to %select{false|true}0">,
   InGroup<TautologicalCompare>;
 def warn_tautological_overlap_comparison : Warning<
   "overlapping comparisons always evaluate to %select{false|true}0">,
@@ -6950,6 +6959,14 @@ def err_omp_linear_expected_int_or_ptr : Error<
 def warn_omp_linear_step_zero : Warning<
   "zero linear step (%0 %select{|and other variables in clause }1should probably be const)">,
   InGroup<OpenMPClauses>;
+def err_omp_aligned_expected_array_or_ptr : Error<
+  "argument of aligned clause should be array"
+  "%select{ or pointer|, pointer, reference to array or reference to pointer}1"
+  ", not %0">;
+def err_omp_aligned_twice : Error<
+  "a variable cannot appear in more than one aligned clause">;
+def err_omp_local_var_in_threadprivate_init : Error<
+  "variable with local storage in initial value of threadprivate variable">;
 } // end of OpenMP category
 
 let CategoryName = "Related Result Type Issue" in {

@@ -11,6 +11,7 @@
 #include "clang/AST/ASTConsumer.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/Basic/Diagnostic.h"
+#include "clang/Basic/DiagnosticOptions.h"
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/LangOptions.h"
 #include "clang/Basic/SourceManager.h"
@@ -162,7 +163,7 @@ protected:
   CharSourceRange InclusionDirectiveFilenameRange(const char* SourceText, 
       const char* HeaderPath, bool SystemHeader) {
     MemoryBuffer *Buf = MemoryBuffer::getMemBuffer(SourceText);
-    (void)SourceMgr.createMainFileIDForMemBuffer(Buf);
+    SourceMgr.setMainFileID(SourceMgr.createFileID(Buf));
 
     VoidModuleLoader ModLoader;
 
@@ -199,7 +200,7 @@ protected:
     OpenCLLangOpts.OpenCL = 1;
 
     MemoryBuffer* sourceBuf = MemoryBuffer::getMemBuffer(SourceText, "test.cl");
-    (void)SourceMgr.createMainFileIDForMemBuffer(sourceBuf);
+    SourceMgr.setMainFileID(SourceMgr.createFileID(sourceBuf));
 
     VoidModuleLoader ModLoader;
     HeaderSearch HeaderInfo(new HeaderSearchOptions, SourceMgr, Diags, 

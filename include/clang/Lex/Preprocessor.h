@@ -373,7 +373,7 @@ class Preprocessor : public RefCountedBase<Preprocessor> {
   llvm::DenseMap<IdentifierInfo*, std::vector<MacroInfo*> > PragmaPushMacroInfo;
 
   // Various statistics we track for performance analysis.
-  unsigned NumDirectives, NumIncluded, NumDefined, NumUndefined, NumPragma;
+  unsigned NumDirectives, NumDefined, NumUndefined, NumPragma;
   unsigned NumIf, NumElse, NumEndif;
   unsigned NumEnteredSourceFiles, MaxIncludeStackDepth;
   unsigned NumMacroExpanded, NumFnMacroExpanded, NumBuiltinMacroExpanded;
@@ -1342,6 +1342,8 @@ public:
   /// \brief Lex an on-off-switch (C99 6.10.6p2) and verify that it is
   /// followed by EOD.  Return true if the token is not a valid on-off-switch.
   bool LexOnOffSwitch(tok::OnOffSwitch &OOS);
+
+  bool CheckMacroName(Token &MacroNameTok, char isDefineUndef);
 
 private:
 
