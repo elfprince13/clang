@@ -670,8 +670,18 @@ Parser::ParseExternalDeclaration(ParsedAttributesWithRange &attrs,
     SingleDecl = Actions.ActOnFileScopeAsmDecl(Result.get(), StartLoc, EndLoc);
     break;
   }
-  case tok::at:
-    return ParseObjCAtDirectives();
+	  case tok::at: {
+		  LangOptions lo = getLangOpts();
+		  DeclGroupPtrTy ret = DeclGroupPtrTy();
+		  if (lo.ObjC1 || lo.ObjC2) {
+			  ret = ParseObjCAtDirectives();
+		  } else if (lo.Skeletons) {
+			  ret = ParseTopLevelSkeleton();
+		  } else {
+			  Diag(Tok, diag::err_unexpected_at);
+		  }
+		  return ret;
+	  }
   case tok::minus:
   case tok::plus:
     if (!getLangOpts().ObjC1) {

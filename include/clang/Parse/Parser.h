@@ -1228,6 +1228,10 @@ private:
   // the simple-asm.
   ExprResult ParseSimpleAsm(SourceLocation *EndLoc = nullptr);
   ExprResult ParseAsmStringLiteral();
+	
+	//===--------------------------------------------------------------------===//
+	// Skeletons: External Definitions.
+	DeclGroupPtrTy ParseTopLevelSkeleton();
 
   // Objective-C External Declarations
   void MaybeSkipAttributes(tok::ObjCKeywordKind Kind);
