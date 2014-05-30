@@ -179,6 +179,18 @@ Retry:
     {
       ProhibitAttributes(Attrs); // TODO: is it correct?
       AtLoc = ConsumeToken();  // consume @
+		{
+			LangOptions lo = getLangOpts();
+			StmtResult ret = StmtError();
+			if (lo.ObjC1 || lo.ObjC2) {
+				ret = ParseObjCAtStatement(AtLoc);
+			} else if (lo.Skeletons) {
+				ret = ParseSkeleton(AtLoc);
+			} else {
+				Diag(Tok, diag::err_unexpected_at);
+			}
+			return ret;
+		}
       return ParseObjCAtStatement(AtLoc);
     }
 

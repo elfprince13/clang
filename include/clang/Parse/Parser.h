@@ -1232,6 +1232,9 @@ private:
 	//===--------------------------------------------------------------------===//
 	// Skeletons: External Definitions.
 	DeclGroupPtrTy ParseTopLevelSkeleton();
+	StmtResult ParseSkeleton(SourceLocation AtLoc);
+	typedef StmtResult (*SkeletonHandler)(SourceLocation KindLoc);
+	SkeletonHandler GetHandlerForSkeleton(IdentifierInfo &skelIdent);
 
   // Objective-C External Declarations
   void MaybeSkipAttributes(tok::ObjCKeywordKind Kind);
