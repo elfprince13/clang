@@ -1,0 +1,5 @@
+int main(int argc, char * argv[]){
+	@Loop2dAccumulate;
+
+	return 0;
+}
