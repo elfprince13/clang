@@ -1411,6 +1411,23 @@ private:
   unsigned getParameterIndexLarge() const;
 };
 
+// Generate Function or Method Decl's around a skeleton.
+class ExposedSkeletonDecl : public DeclaratorDecl, public DeclContext {
+
+public:
+	// Implement isa/cast/dyncast/etc.
+	static bool classof(const Decl *D) { return classofKind(D->getKind()); }
+	static bool classofKind(Kind K) {
+		return K == ExposedSkeleton;
+	}
+	static DeclContext *castToDeclContext(const ExposedSkeletonDecl *D) {
+		return static_cast<DeclContext *>(const_cast<ExposedSkeletonDecl*>(D));
+	}
+	static ExposedSkeletonDecl *castFromDeclContext(const DeclContext *DC) {
+		return static_cast<ExposedSkeletonDecl *>(const_cast<DeclContext*>(DC));
+	}
+};
+
 /// FunctionDecl - An instance of this class is created to represent a
 /// function declaration or definition.
 ///

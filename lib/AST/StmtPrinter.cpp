@@ -258,6 +258,11 @@ void StmtPrinter::VisitDoStmt(DoStmt *Node) {
   OS << ");\n";
 }
 
+void StmtPrinter::VisitSkeletonStmt(SkeletonStmt *Node) {
+		Indent() << "@";
+	OS << "Blahblahblah;\n";
+}
+
 void StmtPrinter::VisitForStmt(ForStmt *Node) {
   Indent() << "for (";
   if (Node->getInit()) {

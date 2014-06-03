@@ -25,6 +25,8 @@
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/ErrorHandling.h"
 #include <string>
+#include <algorithm>
+#include <list>
 
 namespace llvm {
   class FoldingSetNodeID;
@@ -1126,6 +1128,30 @@ public:
     return child_range(&SubExprs[0], &SubExprs[0]+END_EXPR);
   }
 };
+	
+	class SkeletonStmt : public Stmt {
+		SourceLocation AtLoc;
+		SourceRange ParenLocs;
+		std::list<SourceRange> ParamBraceLocs;
+		Stmt *body;
+	public:
+		SkeletonStmt(const ASTContext &C, IdentifierInfo *kind, IdentifierInfo *name,
+					 Stmt *body, SourceLocation AL, SourceRange PL, std::list<SourceRange> PBL);
+		
+		static bool classof(const Stmt *T) {
+			return T->getStmtClass() == SkeletonStmtClass;
+		}
+		
+		SourceLocation getLocStart() const LLVM_READONLY { return AtLoc; }
+		SourceLocation getLocEnd() const LLVM_READONLY {
+			return body->getLocEnd();
+		}
+		
+		// Iterators
+		child_range children() {
+			return child_range(&body, &body);
+		}
+	};
 
 
 /// ForStmt - This represents a 'for (init;cond;inc)' stmt.  Note that any of
