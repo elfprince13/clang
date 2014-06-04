@@ -38,6 +38,7 @@ def Named : Decl<1>;
         def ObjCIvar : DDecl<Field>;
         def ObjCAtDefsField : DDecl<Field>;
       def MSProperty : DDecl<Declarator>;
+      def ExposedSkeleton : DDecl<Declarator>, DeclContext;
       def Function : DDecl<Declarator>, DeclContext;
         def CXXMethod : DDecl<Function>;
           def CXXConstructor : DDecl<CXXMethod>;

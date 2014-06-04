@@ -1135,12 +1135,20 @@ public:
 		std::list<SourceRange> ParamBraceLocs;
 		Stmt *body;
 	public:
+		/// \brief Build an empty for statement.
+		explicit SkeletonStmt(EmptyShell Empty) : Stmt(SkeletonStmtClass, Empty) { }
+
+		
 		SkeletonStmt(const ASTContext &C, IdentifierInfo *kind, IdentifierInfo *name,
 					 Stmt *body, SourceLocation AL, SourceRange PL, std::list<SourceRange> PBL);
 		
 		static bool classof(const Stmt *T) {
 			return T->getStmtClass() == SkeletonStmtClass;
 		}
+		
+		Stmt *getBody() { return body; };
+		const Stmt *getBody() const { return body; };
+		void setBody(Stmt *S) { body = S; };
 		
 		SourceLocation getLocStart() const LLVM_READONLY { return AtLoc; }
 		SourceLocation getLocEnd() const LLVM_READONLY {

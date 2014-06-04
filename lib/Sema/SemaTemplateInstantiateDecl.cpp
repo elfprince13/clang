@@ -1216,6 +1216,11 @@ static QualType adjustFunctionTypeForInstantiation(ASTContext &Context,
                                  NewFunc->getParamTypes(), NewEPI);
 }
 
+Decl *TemplateDeclInstantiator::VisitExposedSkeletonDecl(clang::ExposedSkeletonDecl *D){
+	//ExposedSkeletonDecl Skeleton = ExposedSkeletonDecl(*D);
+	return D;//&Skeleton;
+}
+
 /// Normal class members are of more specific types and therefore
 /// don't make it here.  This function serves two purposes:
 ///   1) instantiating function templates

@@ -160,6 +160,12 @@ void ASTStmtWriter::VisitDoStmt(DoStmt *S) {
   Code = serialization::STMT_DO;
 }
 
+void ASTStmtWriter::VisitSkeletonStmt(SkeletonStmt *S){
+	VisitStmt(S);
+	Writer.AddStmt(S->getBody());
+	Code = serialization::STMT_SKELETON;
+}
+
 void ASTStmtWriter::VisitForStmt(ForStmt *S) {
   VisitStmt(S);
   Writer.AddStmt(S->getInit());

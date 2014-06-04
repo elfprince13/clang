@@ -1777,6 +1777,8 @@ bool RecursiveASTVisitor<Derived>::TraverseFunctionHelper(FunctionDecl *D) {
   }
   return true;
 }
+	
+	DEF_TRAVERSE_DECL(ExposedSkeletonDecl, { })
 
 DEF_TRAVERSE_DECL(FunctionDecl, {
   // We skip decls_begin/decls_end, which are already covered by
@@ -1913,6 +1915,7 @@ DEF_TRAVERSE_STMT(ContinueStmt, {})
 DEF_TRAVERSE_STMT(DefaultStmt, {})
 DEF_TRAVERSE_STMT(DoStmt, {})
 DEF_TRAVERSE_STMT(ForStmt, {})
+	DEF_TRAVERSE_STMT(SkeletonStmt, {})
 DEF_TRAVERSE_STMT(GotoStmt, {})
 DEF_TRAVERSE_STMT(IfStmt, {})
 DEF_TRAVERSE_STMT(IndirectGotoStmt, {})

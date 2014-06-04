@@ -1413,6 +1413,14 @@ private:
 
 // Generate Function or Method Decl's around a skeleton.
 class ExposedSkeletonDecl : public DeclaratorDecl, public DeclContext {
+	
+protected:
+	ExposedSkeletonDecl(Kind DK, ASTContext &C, DeclContext *DC, SourceLocation StartLoc,
+				 const DeclarationNameInfo &NameInfo,
+				 QualType T, TypeSourceInfo *TInfo)
+    : DeclaratorDecl(DK, DC, NameInfo.getLoc(), NameInfo.getName(), T, TInfo,
+                     StartLoc),
+	DeclContext(DK) {};
 
 public:
 	// Implement isa/cast/dyncast/etc.
@@ -1426,6 +1434,8 @@ public:
 	static ExposedSkeletonDecl *castFromDeclContext(const DeclContext *DC) {
 		return static_cast<ExposedSkeletonDecl *>(const_cast<DeclContext*>(DC));
 	}
+	
+	static ExposedSkeletonDecl *CreateDeserialized(ASTContext &C, unsigned ID);
 };
 
 /// FunctionDecl - An instance of this class is created to represent a

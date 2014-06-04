@@ -132,6 +132,10 @@ void StmtProfiler::VisitDoStmt(const DoStmt *S) {
   VisitStmt(S);
 }
 
+void StmtProfiler::VisitSkeletonStmt(const clang::SkeletonStmt *S) {
+	VisitStmt(S);
+}
+
 void StmtProfiler::VisitForStmt(const ForStmt *S) {
   VisitStmt(S);
 }

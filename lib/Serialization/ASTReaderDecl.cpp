@@ -2623,6 +2623,9 @@ Decl *ASTReader::ReadDeclRecord(DeclID ID) {
   case DECL_ENUM_CONSTANT:
     D = EnumConstantDecl::CreateDeserialized(Context, ID);
     break;
+	  case DECL_EXPOSED_SKELETON:
+		  D = ExposedSkeletonDecl::CreateDeserialized(Context, ID);
+		  break;
   case DECL_FUNCTION:
     D = FunctionDecl::CreateDeserialized(Context, ID);
     break;

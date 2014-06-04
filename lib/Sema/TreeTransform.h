@@ -5625,6 +5625,21 @@ TreeTransform<Derived>::TransformDoStmt(DoStmt *S) {
                                     /*FIXME:*/S->getWhileLoc(), Cond.get(),
                                     S->getRParenLoc());
 }
+	
+	template<typename Derived> StmtResult TreeTransform<Derived>::TransformSkeletonStmt(SkeletonStmt *S){
+		StmtResult Body = getDerived().TransformStmt(S->getBody());
+		if(Body.isInvalid()) return StmtError();
+		
+		if(!getDerived().AlwaysRebuild() && Body.get() == S->getBody()) return S;
+		
+		// This is definitely bad. We should add a rebuild and some Sema actions.
+		// Also, returning pointer of stack allocation.
+		SkeletonStmt newSkel = SkeletonStmt(*S);
+		newSkel.setBody(Body.get());
+		StmtResult ret = StmtResult(&newSkel);
+		
+		return ret;
+	}
 
 template<typename Derived>
 StmtResult

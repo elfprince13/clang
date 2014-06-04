@@ -17,6 +17,7 @@ def IfStmt : Stmt;
 def SwitchStmt : Stmt;
 def WhileStmt : Stmt;
 def DoStmt : Stmt;
+def SkeletonStmt : Stmt;
 def ForStmt : Stmt;
 def GotoStmt : Stmt;
 def IndirectGotoStmt : Stmt;

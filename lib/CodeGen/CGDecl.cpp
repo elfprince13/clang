@@ -78,6 +78,7 @@ void CodeGenFunction::EmitDecl(const Decl &D) {
   case Decl::ClassScopeFunctionSpecialization:
   case Decl::UsingShadow:
     llvm_unreachable("Declaration should not be in declstmts!");
+	  case Decl::ExposedSkeleton:
   case Decl::Function:  // void X();
   case Decl::Record:    // struct/union/class X;
   case Decl::Enum:      // enum X;

@@ -1075,7 +1075,9 @@ namespace clang {
       /// \brief An OMPThreadPrivateDecl record.
       DECL_OMP_THREADPRIVATE,
       /// \brief An EmptyDecl record.
-      DECL_EMPTY
+      DECL_EMPTY,
+		/// \brief An ExposedSkeletonDecl record
+		DECL_EXPOSED_SKELETON
     };
 
     /// \brief Record codes for each kind of statement or expression.
@@ -1346,7 +1348,11 @@ namespace clang {
       EXPR_OBJC_BRIDGED_CAST,     // ObjCBridgedCastExpr
       
       STMT_MS_DEPENDENT_EXISTS,   // MSDependentExistsStmt
-      EXPR_LAMBDA                 // LambdaExpr
+      EXPR_LAMBDA,                 // LambdaExpr
+		
+		// Skeletons
+		STMT_SKELETON
+		
     };
 
     /// \brief The kinds of designators that can occur in a

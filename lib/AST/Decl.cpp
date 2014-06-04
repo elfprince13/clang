@@ -3598,6 +3598,10 @@ FunctionDecl *FunctionDecl::Create(ASTContext &C, DeclContext *DC,
   return New;
 }
 
+ExposedSkeletonDecl *ExposedSkeletonDecl::CreateDeserialized(ASTContext &C, unsigned ID) {
+	return new (C, ID) ExposedSkeletonDecl(ExposedSkeleton, C, nullptr, SourceLocation(), DeclarationNameInfo(), QualType(), nullptr);
+}
+
 FunctionDecl *FunctionDecl::CreateDeserialized(ASTContext &C, unsigned ID) {
   return new (C, ID) FunctionDecl(Function, C, nullptr, SourceLocation(),
                                   DeclarationNameInfo(), QualType(), nullptr,

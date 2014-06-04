@@ -233,6 +233,11 @@ void ASTStmtReader::VisitDoStmt(DoStmt *S) {
   S->setRParenLoc(ReadSourceLocation(Record, Idx));
 }
 
+void ASTStmtReader::VisitSkeletonStmt(SkeletonStmt *S){
+	VisitStmt(S);
+	S->setBody(Reader.ReadSubStmt());
+}
+
 void ASTStmtReader::VisitForStmt(ForStmt *S) {
   VisitStmt(S);
   S->setInit(Reader.ReadSubStmt());
@@ -1971,6 +1976,10 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
     case STMT_DO:
       S = new (Context) DoStmt(Empty);
       break;
+			
+		case STMT_SKELETON:
+			S = new (Context) SkeletonStmt(Empty);
+			break;
 
     case STMT_FOR:
       S = new (Context) ForStmt(Empty);
