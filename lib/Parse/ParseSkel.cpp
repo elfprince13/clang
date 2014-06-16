@@ -25,10 +25,12 @@ Parser::DeclGroupPtrTy Parser::ParseTopLevelSkeleton() {
 }
 
 
+
 Parser::StmtResult Parser::ParseSkeleton(SourceLocation AtLoc){
-	StmtResult ret = StmtError();
+	StmtResult ret;
 	if (Tok.is(tok::identifier)) {
 		IdentifierInfo *ii = Tok.getIdentifierInfo();
+		SourceLocation SkelLoc = ConsumeToken();
 		SkeletonHandler handler = GetHandlerForSkeleton(*ii);
 		if (handler == nullptr) {
 			// TODO: this blows up if uncommented, but I can't even step
@@ -36,10 +38,59 @@ Parser::StmtResult Parser::ParseSkeleton(SourceLocation AtLoc){
 			// I think I must need access to a Sema or something.
 			//Diag(Tok, diag::err_undeclared_var_use);
 		} else {
+			if(Tok.is(tok::l_paren)) {
+				// Skeletons may attach a name for their local block of code
+				BalancedDelimiterTracker T(*this, tok::l_paren);
+				T.consumeOpen();
+				
+				if(Tok.is(tok::identifier)) {
+					IdentifierInfo *is = Tok.getIdentifierInfo();
+					ConsumeToken();
+				} else {
+					ret = StmtError(Diag(Tok, diag::err_expected_unqualified_id));
+				}
+				
+				T.consumeClose();
+			}
+			
+			while (Tok.is(tok::l_square)){
+				BalancedDelimiterTracker T(*this, tok::l_square);
+				T.consumeOpen();
+				
+				if(Tok.is(tok::identifier)) {
+					IdentifierInfo *ip = Tok.getIdentifierInfo();
+					ConsumeToken();
+					ExprResult er;
+					if (Tok.is(tok::colon)) {
+						// We've parsed out an identifier that we're going to perform
+						// macro-style substitutions on. Any expression will do.
+						ConsumeToken();
+						er = ParseExpression();
+					} else if (Tok.is(tok::colon)){
+						// We've parsed out an identifier that's going to be a named
+						// Constant. Only a constant expression will do.
+						ConsumeToken();
+						er = ParseExpression();
+						
+						// This needs a context. Where do we get one?
+						// er.get()->isEvaluatable();
+					} else {
+						DiagnosticBuilder DB = Diag(Tok, diag::err_expected_either);
+						DB << tok::colon;
+						DB << tok::equal;
+						ret = StmtError(DB);
+					}
+				} else {
+					ret = StmtError(Diag(Tok, diag::err_expected_unqualified_id));
+				}
+				
+				T.consumeClose();
+			}
+			
 			ret = handler(ConsumeToken());
 		}
 	} else {
-		Diag(Tok, diag::err_unexpected_at);
+		ret = StmtError(Diag(Tok, diag::err_unexpected_at));
 	}
 	return ret;
 }
