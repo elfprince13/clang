@@ -58,19 +58,25 @@ Parser::StmtResult Parser::ParseSkeleton(SourceLocation AtLoc){
 					IdentifierInfo *ip = Tok.getIdentifierInfo();
 					ConsumeToken();
 					ExprResult er;
-					if (Tok.is(tok::colon)) {
-						// We've parsed out an identifier that we're going to perform
-						// macro-style substitutions on. Any expression will do.
+					bool colon = Tok.is(tok::colon);
+					bool equal = Tok.is(tok::equal);
+					assert((!colon || !equal) && "Can't have parsed both a colon and an equal");
+					if (colon || equal) {
 						ConsumeToken();
-						er = ParseExpression();
-					} else if (Tok.is(tok::colon)){
-						// We've parsed out an identifier that's going to be a named
-						// Constant. Only a constant expression will do.
-						ConsumeToken();
-						er = ParseExpression();
 						
-						// This needs a context. Where do we get one?
-						// er.get()->isEvaluatable();
+						er = ParseExpression();
+		
+						if(colon) {
+							// We've parsed out an identifier that we're going to perform
+							// macro-style substitutions on. Any expression will do.
+						} else if (er.isUsable() && er.get()->isEvaluatable(Actions.Context)) {
+							// We've parsed out an identifier that's going to be a named
+							// Constant. Only a constant expression will do.
+							
+						} else {
+							//er = ExprError(Diag(er.get()->getLocStart(), diag::err_expected_expression));
+							ret = StmtError(Diag(er.get()->getLocStart(), diag::err_expected_expression));
+						}
 					} else {
 						ret = StmtError(Diag(Tok, diag::err_expected_either) << tok::colon << tok::equal);
 					}

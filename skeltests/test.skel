@@ -1,5 +1,5 @@
 int main(int argc, char * argv[]){
-	@Loop2dAccumulate(test)[test1: 5][test2+5];
+	@Loop2dAccumulate(test)[test1: 5][test2 = 5][test3: argc][test4= argc][test5 + 5];
 	@Loop1d(blah);
 	return 0;
 }
