@@ -33,10 +33,7 @@ Parser::StmtResult Parser::ParseSkeleton(SourceLocation AtLoc){
 		SourceLocation SkelLoc = ConsumeToken();
 		SkeletonHandler handler = GetHandlerForSkeleton(*ii);
 		if (handler == nullptr) {
-			// TODO: this blows up if uncommented, but I can't even step
-			// in with the debugger for some reason to see why.
-			// I think I must need access to a Sema or something.
-			//Diag(Tok, diag::err_undeclared_var_use);
+			ret = StmtError(Diag(SkelLoc, diag::err_undeclared_var_use) << ii);
 		} else {
 			if(Tok.is(tok::l_paren)) {
 				// Skeletons may attach a name for their local block of code
@@ -47,7 +44,7 @@ Parser::StmtResult Parser::ParseSkeleton(SourceLocation AtLoc){
 					IdentifierInfo *is = Tok.getIdentifierInfo();
 					ConsumeToken();
 				} else {
-					ret = StmtError(Diag(Tok, diag::err_expected_unqualified_id));
+					ret = StmtError(Diag(Tok, diag::err_expected_unqualified_id) << getLangOpts().CPlusPlus);
 				}
 				
 				T.consumeClose();
@@ -75,19 +72,16 @@ Parser::StmtResult Parser::ParseSkeleton(SourceLocation AtLoc){
 						// This needs a context. Where do we get one?
 						// er.get()->isEvaluatable();
 					} else {
-						DiagnosticBuilder DB = Diag(Tok, diag::err_expected_either);
-						DB << tok::colon;
-						DB << tok::equal;
-						ret = StmtError(DB);
+						ret = StmtError(Diag(Tok, diag::err_expected_either) << tok::colon << tok::equal);
 					}
 				} else {
-					ret = StmtError(Diag(Tok, diag::err_expected_unqualified_id));
+					ret = StmtError(Diag(Tok, diag::err_expected_unqualified_id) << getLangOpts().CPlusPlus);
 				}
 				
 				T.consumeClose();
 			}
 			
-			ret = handler(ConsumeToken());
+			ret = handler(SkelLoc);
 		}
 	} else {
 		ret = StmtError(Diag(Tok, diag::err_unexpected_at));
