@@ -1586,6 +1586,13 @@ void Sema::CheckBreakContinueBinding(Expr *E) {
   }
 }
 
+StmtResult Sema::ActOnSkeletonStmt(SourceLocation AtLoc, SourceLocation SkelLoc,
+								   IdentifierInfo *skelName, IdentifierInfo *blockName,
+								   SmallVector<IdentifierInfo*, 8> paramNames, SmallVector<FullExprArg, 8> paramExprs,
+								   Stmt *Body, SkeletonHandler handler) {
+	return StmtResult();
+}
+
 StmtResult
 Sema::ActOnForStmt(SourceLocation ForLoc, SourceLocation LParenLoc,
                    Stmt *First, FullExprArg second, Decl *secondVar,

@@ -28,6 +28,10 @@ Parser::DeclGroupPtrTy Parser::ParseTopLevelSkeleton() {
 
 Parser::StmtResult Parser::ParseSkeleton(SourceLocation AtLoc){
 	StmtResult ret;
+	SmallVector<IdentifierInfo*, 8> paramNames;
+	SmallVector<FullExprArg, 8> paramExprs;
+	IdentifierInfo *is;
+	
 	if (Tok.is(tok::identifier)) {
 		IdentifierInfo *ii = Tok.getIdentifierInfo();
 		SourceLocation SkelLoc = ConsumeToken();
@@ -41,7 +45,7 @@ Parser::StmtResult Parser::ParseSkeleton(SourceLocation AtLoc){
 				T.consumeOpen();
 				
 				if(Tok.is(tok::identifier)) {
-					IdentifierInfo *is = Tok.getIdentifierInfo();
+					is = Tok.getIdentifierInfo();
 					ConsumeToken();
 				} else {
 					ret = StmtError(Diag(Tok, diag::err_expected_unqualified_id) << getLangOpts().CPlusPlus);
@@ -49,6 +53,9 @@ Parser::StmtResult Parser::ParseSkeleton(SourceLocation AtLoc){
 				
 				T.consumeClose();
 			}
+			
+			bool C99orCXX = getLangOpts().C99 || getLangOpts().CPlusPlus;
+			ParseScope SkelScope(this, Scope::DeclScope | Scope::ControlScope, C99orCXX);
 			
 			while (Tok.is(tok::l_square)){
 				BalancedDelimiterTracker T(*this, tok::l_square);
@@ -66,13 +73,18 @@ Parser::StmtResult Parser::ParseSkeleton(SourceLocation AtLoc){
 						
 						er = ParseExpression();
 		
-						if(colon) {
+						if(er.isUsable() &&
+						   (colon ||
 							// We've parsed out an identifier that we're going to perform
 							// macro-style substitutions on. Any expression will do.
-						} else if (er.isUsable() && er.get()->isEvaluatable(Actions.Context)) {
+							er.get()->isEvaluatable(Actions.Context)
 							// We've parsed out an identifier that's going to be a named
 							// Constant. Only a constant expression will do.
-							
+							)
+						   ) {
+							FullExprArg FullExp(Actions.MakeFullExpr(er.get(), SkelLoc));
+							paramNames.push_back(ip);
+							paramExprs.push_back(FullExp);
 						} else {
 							//er = ExprError(Diag(er.get()->getLocStart(), diag::err_expected_expression));
 							ret = StmtError(Diag(er.get()->getLocStart(), diag::err_expected_expression));
@@ -87,7 +99,14 @@ Parser::StmtResult Parser::ParseSkeleton(SourceLocation AtLoc){
 				T.consumeClose();
 			}
 			
-			ret = handler(SkelLoc);
+			ParseScope InnerScope(this, Scope::DeclScope, C99orCXX, Tok.is(tok::l_brace));
+			
+			StmtResult body = ParseStatement();
+			
+			InnerScope.Exit();
+			SkelScope.Exit();
+			
+			ret = Actions.ActOnSkeletonStmt(AtLoc, SkelLoc, ii, is, paramNames, paramExprs, body.get(), handler); //handler(SkelLoc);
 		}
 	} else {
 		ret = StmtError(Diag(Tok, diag::err_unexpected_at));
