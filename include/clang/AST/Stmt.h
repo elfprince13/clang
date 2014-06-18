@@ -1131,33 +1131,57 @@ public:
 	
 	class SkeletonStmt : public Stmt {
 		SourceLocation AtLoc;
-		SourceRange ParenLocs;
-		std::list<SourceRange> ParamBraceLocs;
-		Stmt *body;
+		SourceLocation SkelLoc;
+		IdentifierInfo *kind;
+		IdentifierInfo *name;
+		
+		int numExprs;
+		int body;
+		
+		Stmt **SubExprs;
+		IdentifierInfo **ParamNames;
 	public:
 		/// \brief Build an empty for statement.
-		explicit SkeletonStmt(EmptyShell Empty) : Stmt(SkeletonStmtClass, Empty) { }
+		explicit SkeletonStmt(EmptyShell Empty) : Stmt(SkeletonStmtClass, Empty), kind(nullptr), name(nullptr), numExprs(0), body(-1), SubExprs(nullptr), ParamNames(nullptr) { }
 
-		
-		SkeletonStmt(const ASTContext &C, IdentifierInfo *kind, IdentifierInfo *name,
-					 Stmt *body, SourceLocation AL, SourceRange PL, std::list<SourceRange> PBL);
+		typedef StmtResult (*SkeletonHandler)(SourceLocation KindLoc);
+		SkeletonStmt(const ASTContext &C, SourceLocation atLoc, SourceLocation skelLoc, IdentifierInfo *skelName, IdentifierInfo *blockName,
+					 ArrayRef<IdentifierInfo*> paramNames,
+					 ArrayRef<Expr*> paramExprs,
+					 Stmt *Body, SkeletonHandler handler);
 		
 		static bool classof(const Stmt *T) {
 			return T->getStmtClass() == SkeletonStmtClass;
 		}
 		
-		Stmt *getBody() { return body; };
-		const Stmt *getBody() const { return body; };
-		void setBody(Stmt *S) { body = S; };
+		Stmt *getBody() {
+			return (body >= 0) ? SubExprs[body] : nullptr;
+		};
+		
+		const Stmt *getBody() const {
+			return (body >= 0) ? SubExprs[body] : nullptr;
+		};
+		
+		void setBody(Stmt *S){
+			assert((body >= 0) && "setBody");
+			SubExprs[body] = S;
+		}
+		
+		void setParams(const ASTContext &C, Expr **Params, unsigned NumParams);
 		
 		SourceLocation getLocStart() const LLVM_READONLY { return AtLoc; }
 		SourceLocation getLocEnd() const LLVM_READONLY {
-			return body->getLocEnd();
+			assert((body >= 0) && "getLocEnd");
+			return SubExprs[body]->getLocEnd();
 		}
 		
 		// Iterators
+		child_range parameters() {
+			return child_range(SubExprs, SubExprs + body);
+		}
+		
 		child_range children() {
-			return child_range(&body, &body);
+			return child_range(SubExprs, SubExprs + numExprs);
 		}
 	};
 

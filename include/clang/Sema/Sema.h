@@ -3021,7 +3021,7 @@ public:
 	typedef StmtResult (*SkeletonHandler)(SourceLocation KindLoc);
 	StmtResult ActOnSkeletonStmt(SourceLocation AtLoc, SourceLocation SkelLoc,
 									   IdentifierInfo *skelName, IdentifierInfo *blockName,
-									   SmallVector<IdentifierInfo*, 8> paramNames, SmallVector<FullExprArg, 8> paramExprs,
+									   SmallVector<IdentifierInfo*, 8> paramNames, SmallVector<Expr*, 8> paramExprs,
 								 Stmt *Body, SkeletonHandler handler);
 	
   StmtResult ActOnForStmt(SourceLocation ForLoc,

@@ -29,7 +29,7 @@ Parser::DeclGroupPtrTy Parser::ParseTopLevelSkeleton() {
 Parser::StmtResult Parser::ParseSkeleton(SourceLocation AtLoc){
 	StmtResult ret;
 	SmallVector<IdentifierInfo*, 8> paramNames;
-	SmallVector<FullExprArg, 8> paramExprs;
+	SmallVector<Expr*, 8> paramExprs;
 	IdentifierInfo *is;
 	
 	if (Tok.is(tok::identifier)) {
@@ -84,7 +84,7 @@ Parser::StmtResult Parser::ParseSkeleton(SourceLocation AtLoc){
 						   ) {
 							FullExprArg FullExp(Actions.MakeFullExpr(er.get(), SkelLoc));
 							paramNames.push_back(ip);
-							paramExprs.push_back(FullExp);
+							paramExprs.push_back(FullExp.get());
 						} else {
 							//er = ExprError(Diag(er.get()->getLocStart(), diag::err_expected_expression));
 							ret = StmtError(Diag(er.get()->getLocStart(), diag::err_expected_expression));

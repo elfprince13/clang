@@ -848,12 +848,43 @@ void IfStmt::setConditionVariable(const ASTContext &C, VarDecl *V) {
                                    VarRange.getEnd());
 }
 
-SkeletonStmt::SkeletonStmt(const ASTContext &C, IdentifierInfo *kind,
-						   IdentifierInfo *name, Stmt *body,
-						   SourceLocation AL, SourceRange PL,
-						   std::list<SourceRange> PBL)
-: Stmt(SkeletonStmtClass), AtLoc(AL), ParenLocs(PL), ParamBraceLocs(PBL), body(body){
+SkeletonStmt::SkeletonStmt(const ASTContext &C, SourceLocation atLoc, SourceLocation skelLoc, IdentifierInfo *skelName, IdentifierInfo *blockName,
+			 ArrayRef<IdentifierInfo*> paramNames,
+			 ArrayRef<Expr*> paramExprs,
+			 Stmt *Body, SkeletonHandler handler) : Stmt(SkeletonStmtClass), AtLoc(atLoc), SkelLoc(skelLoc), kind(skelName), name(blockName){
 	
+	assert((paramNames.size() == paramExprs.size()) && "param count mismatch");
+	
+	body = paramNames.size();
+	numExprs = body + 1;
+	if (body) {
+		ParamNames = new (C) IdentifierInfo*[body];
+		std::copy(paramNames.begin(), paramNames.end(), ParamNames);
+	} else {
+		ParamNames = nullptr;
+	}
+	
+	SubExprs = new (C) Stmt*[numExprs];
+	
+	std::copy(paramExprs.begin(), paramExprs.end(), SubExprs);
+	SubExprs[body] = Body;
+	
+	
+}
+
+void SkeletonStmt::setParams(const ASTContext &C, Expr **Params,
+                            unsigned NumParams) {
+	Stmt *Body = nullptr;
+	if (this->SubExprs){
+		Body = SubExprs[body];
+		C.Deallocate(SubExprs);
+	}
+	body = NumParams;
+	numExprs = body + 1;
+	
+	SubExprs = new (C) Stmt*[numExprs];
+	memcpy(SubExprs, Params, sizeof(Stmt *) * numExprs);
+	SubExprs[body] = Body;
 }
 
 ForStmt::ForStmt(const ASTContext &C, Stmt *Init, Expr *Cond, VarDecl *condVar,
