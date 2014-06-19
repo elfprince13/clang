@@ -853,7 +853,7 @@ SkeletonStmt::SkeletonStmt(const ASTContext &C,
 						   IdentifierInfo *skelName, IdentifierInfo *blockName,
 						   ArrayRef<IdentifierInfo*> paramNames,
 						   ArrayRef<Expr*> paramExprs,
-						   Stmt *Body)
+						   Stmt *Body, SkeletonHandler handler)
 : Stmt(SkeletonStmtClass), AtLoc(atLoc), SkelLoc(skelLoc), kind(skelName), name(blockName){
 	
 	assert((paramNames.size() == paramExprs.size()) && "param count mismatch");
@@ -871,6 +871,8 @@ SkeletonStmt::SkeletonStmt(const ASTContext &C,
 	
 	std::copy(paramExprs.begin(), paramExprs.end(), SubExprs);
 	SubExprs[body] = Body;
+	
+	setHandler(handler);
 	
 	
 }

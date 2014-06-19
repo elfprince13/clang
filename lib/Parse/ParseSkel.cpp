@@ -28,8 +28,8 @@ Parser::DeclGroupPtrTy Parser::ParseTopLevelSkeleton() {
 
 Parser::StmtResult Parser::ParseSkeleton(SourceLocation AtLoc){
 	StmtResult ret = StmtResult();
-	SmallVector<IdentifierInfo*, 8> paramNames;
-	SmallVector<Expr*, 8> paramExprs;
+	SmallVector<IdentifierInfo*, 16> paramNames;
+	SmallVector<Expr*, 16> paramExprs;
 	IdentifierInfo *is;
 	
 	if (Tok.is(tok::identifier)) {
@@ -86,7 +86,6 @@ Parser::StmtResult Parser::ParseSkeleton(SourceLocation AtLoc){
 							paramNames.push_back(ip);
 							paramExprs.push_back(FullExp.get());
 						} else {
-							//er = ExprError(Diag(er.get()->getLocStart(), diag::err_expected_expression));
 							ret = StmtError(Diag(er.get()->getLocStart(), diag::err_expected_expression));
 						}
 					} else {
@@ -106,8 +105,7 @@ Parser::StmtResult Parser::ParseSkeleton(SourceLocation AtLoc){
 			InnerScope.Exit();
 			SkelScope.Exit();
 			
-			if (!
-				ret.isInvalid()){
+			if (!ret.isInvalid()){
 				ret = Actions.ActOnSkeletonStmt(AtLoc, SkelLoc, ii, is, paramNames, paramExprs, body.get(), handler); //handler(SkelLoc);
 			}
 		}

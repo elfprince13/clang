@@ -1158,6 +1158,14 @@ public:
                                  Cond, RParenLoc);
   }
 
+	typedef Stmt* (*SkeletonHandler)(SkeletonStmt*);
+	StmtResult RebuildSkeletonStmt(SourceLocation AtLoc, SourceLocation SkelLoc,
+								   IdentifierInfo *skelName, IdentifierInfo *blockName,
+								   SmallVector<IdentifierInfo*, 16> paramNames, SmallVector<Expr*, 16> paramExprs,
+								   Stmt *Body, SkeletonHandler handler) {
+		return getSema().ActOnSkeletonStmt(AtLoc, SkelLoc, skelName, blockName, paramNames, paramExprs, Body, handler);
+	}
+
   /// \brief Build a new for statement.
   ///
   /// By default, performs semantic analysis to build the new statement.
@@ -5647,20 +5655,44 @@ TreeTransform<Derived>::TransformDoStmt(DoStmt *S) {
                                     S->getRParenLoc());
 }
 	
-	template<typename Derived> StmtResult TreeTransform<Derived>::TransformSkeletonStmt(SkeletonStmt *S){
-		StmtResult Body = getDerived().TransformStmt(S->getBody());
-		if(Body.isInvalid()) return StmtError();
+template<typename Derived>
+StmtResult
+TreeTransform<Derived>::TransformSkeletonStmt(SkeletonStmt *S){
+	bool SubStmtInvalid = false;
+	bool SubStmtChanged = false;
+	
+	SmallVector<Expr*, 16> SubExprs;
+	SmallVector<IdentifierInfo*, 16> ParamNames;
+	
+	for(int i = 0, n = S->getNumParams(); i < n; i++ ) ParamNames.push_back(S->getParamNames()[i]);
+	
+	for(auto *B : S->parameters()) {
+		StmtResult Result = getDerived().TransformStmt(B);
+		if (Result.isInvalid()) {
+			// Immediately fail if this was a DeclStmt, since it's very
+			// likely that this will cause problems for future statements.
+			if (isa<DeclStmt>(B))
+				return StmtError();
+			
+			// Otherwise, just keep processing substatements and fail later.
+			SubStmtInvalid = true;
+			continue;
+		}
 		
-		if(!getDerived().AlwaysRebuild() && Body.get() == S->getBody()) return S;
-		
-		// This is definitely bad. We should add a rebuild and some Sema actions.
-		// Also, returning pointer of stack allocation.
-		SkeletonStmt newSkel = SkeletonStmt(*S);
-		newSkel.setBody(Body.get());
-		StmtResult ret = StmtResult(&newSkel);
-		
-		return ret;
+		SubStmtChanged = SubStmtChanged || Result.get() != B;
+		SubExprs.push_back(Result.getAs<Expr>());
 	}
+	Stmt* Body = getDerived().TransformStmt(S->getBody()).get();
+	
+	if (SubStmtInvalid)
+		return StmtError();
+	
+	if (!getDerived().AlwaysRebuild() &&
+		!SubStmtChanged)
+		return S;
+	
+	return getDerived().RebuildSkeletonStmt(S->getAtLoc(), S->getSkelLoc(), S->getKind(), S->getName(), ParamNames, SubExprs, Body, S->getHandler() );
+}
 
 template<typename Derived>
 StmtResult

@@ -1128,7 +1128,8 @@ public:
     return child_range(&SubExprs[0], &SubExprs[0]+END_EXPR);
   }
 };
-	
+	class SkeletonStmt;
+	typedef Stmt* (*SkeletonHandler)(SkeletonStmt* InSkel);
 	class SkeletonStmt : public Stmt {
 		SourceLocation AtLoc;
 		SourceLocation SkelLoc;
@@ -1140,14 +1141,16 @@ public:
 		
 		Stmt **SubExprs;
 		IdentifierInfo **ParamNames;
+		SkeletonHandler handler;
 	public:
+		
 		/// \brief Build an empty for statement.
-		explicit SkeletonStmt(EmptyShell Empty) : Stmt(SkeletonStmtClass, Empty), kind(nullptr), name(nullptr), numExprs(0), body(-1), SubExprs(nullptr), ParamNames(nullptr) { }
+		explicit SkeletonStmt(EmptyShell Empty) : Stmt(SkeletonStmtClass, Empty), kind(nullptr), name(nullptr), numExprs(0), body(-1), SubExprs(nullptr), ParamNames(nullptr), handler(nullptr) { }
 
 		SkeletonStmt(const ASTContext &C, SourceLocation atLoc, SourceLocation skelLoc, IdentifierInfo *skelName, IdentifierInfo *blockName,
 					 ArrayRef<IdentifierInfo*> paramNames,
 					 ArrayRef<Expr*> paramExprs,
-					 Stmt *Body);
+					 Stmt *Body, SkeletonHandler handler);
 		
 		static bool classof(const Stmt *T) {
 			return T->getStmtClass() == SkeletonStmtClass;
@@ -1166,6 +1169,9 @@ public:
 			SubExprs[body] = S;
 		}
 		
+		void setHandler(SkeletonHandler h){ handler = h; }
+		SkeletonHandler getHandler(){ return handler; }
+		
 		void setKind(IdentifierInfo *k){ kind = k; }
 		void setName(IdentifierInfo *n){ kind = name; }
 		
@@ -1173,7 +1179,7 @@ public:
 		IdentifierInfo* getName(){ return name; }
 		
 		int getNumParams(){ return body; }
-		IdentifierInfo const* const* getParamNames() const { return ParamNames; }
+		IdentifierInfo * const* getParamNames() const { return ParamNames; }
 		
 		
 		void setParams(const ASTContext &C, IdentifierInfo **ParamNames, Expr **Params, unsigned NumParams);
