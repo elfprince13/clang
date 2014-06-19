@@ -1233,7 +1233,7 @@ private:
 	// Skeletons: External Definitions.
 	DeclGroupPtrTy ParseTopLevelSkeleton();
 	StmtResult ParseSkeleton(SourceLocation AtLoc);
-	typedef StmtResult (*SkeletonHandler)(SourceLocation KindLoc);
+	typedef Stmt* (*SkeletonHandler)(SkeletonStmt* InSkel);
 	SkeletonHandler GetHandlerForSkeleton(IdentifierInfo &skelIdent);
 
   // Objective-C External Declarations

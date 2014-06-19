@@ -1144,11 +1144,10 @@ public:
 		/// \brief Build an empty for statement.
 		explicit SkeletonStmt(EmptyShell Empty) : Stmt(SkeletonStmtClass, Empty), kind(nullptr), name(nullptr), numExprs(0), body(-1), SubExprs(nullptr), ParamNames(nullptr) { }
 
-		typedef StmtResult (*SkeletonHandler)(SourceLocation KindLoc);
 		SkeletonStmt(const ASTContext &C, SourceLocation atLoc, SourceLocation skelLoc, IdentifierInfo *skelName, IdentifierInfo *blockName,
 					 ArrayRef<IdentifierInfo*> paramNames,
 					 ArrayRef<Expr*> paramExprs,
-					 Stmt *Body, SkeletonHandler handler);
+					 Stmt *Body);
 		
 		static bool classof(const Stmt *T) {
 			return T->getStmtClass() == SkeletonStmtClass;

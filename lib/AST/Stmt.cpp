@@ -848,10 +848,13 @@ void IfStmt::setConditionVariable(const ASTContext &C, VarDecl *V) {
                                    VarRange.getEnd());
 }
 
-SkeletonStmt::SkeletonStmt(const ASTContext &C, SourceLocation atLoc, SourceLocation skelLoc, IdentifierInfo *skelName, IdentifierInfo *blockName,
-			 ArrayRef<IdentifierInfo*> paramNames,
-			 ArrayRef<Expr*> paramExprs,
-			 Stmt *Body, SkeletonHandler handler) : Stmt(SkeletonStmtClass), AtLoc(atLoc), SkelLoc(skelLoc), kind(skelName), name(blockName){
+SkeletonStmt::SkeletonStmt(const ASTContext &C,
+						   SourceLocation atLoc, SourceLocation skelLoc,
+						   IdentifierInfo *skelName, IdentifierInfo *blockName,
+						   ArrayRef<IdentifierInfo*> paramNames,
+						   ArrayRef<Expr*> paramExprs,
+						   Stmt *Body)
+: Stmt(SkeletonStmtClass), AtLoc(atLoc), SkelLoc(skelLoc), kind(skelName), name(blockName){
 	
 	assert((paramNames.size() == paramExprs.size()) && "param count mismatch");
 	

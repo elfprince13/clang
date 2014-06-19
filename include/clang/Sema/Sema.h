@@ -3018,7 +3018,7 @@ public:
                                  SourceLocation CondLParen, Expr *Cond,
                                  SourceLocation CondRParen);
 	
-	typedef StmtResult (*SkeletonHandler)(SourceLocation KindLoc);
+	typedef Stmt* (*SkeletonHandler)(SkeletonStmt* InSkel);
 	StmtResult ActOnSkeletonStmt(SourceLocation AtLoc, SourceLocation SkelLoc,
 									   IdentifierInfo *skelName, IdentifierInfo *blockName,
 									   SmallVector<IdentifierInfo*, 8> paramNames, SmallVector<Expr*, 8> paramExprs,

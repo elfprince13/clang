@@ -1590,7 +1590,10 @@ StmtResult Sema::ActOnSkeletonStmt(SourceLocation AtLoc, SourceLocation SkelLoc,
 								   IdentifierInfo *skelName, IdentifierInfo *blockName,
 								   SmallVector<IdentifierInfo*, 8> paramNames, SmallVector<Expr*, 8> paramExprs,
 								   Stmt *Body, SkeletonHandler handler) {
-	return new (Context) SkeletonStmt(Context, AtLoc, SkelLoc, skelName, blockName, paramNames, paramExprs, Body, handler);
+	SkeletonStmt *builtStmt = new (Context) SkeletonStmt(Context, AtLoc, SkelLoc, skelName, blockName, paramNames, paramExprs, Body);
+	Stmt *outStmt = handler(builtStmt);
+	Context.Deallocate(builtStmt);
+	return outStmt;
 }
 
 StmtResult
