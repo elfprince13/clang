@@ -33,6 +33,7 @@ def SectionDocs : Documentation {
 The ``section`` attribute allows you to specify a specific section a
 global variable or function should be in after translation.
   }];
+  let Heading = "section (gnu::section, __declspec(allocate))";
 }
 
 def TLSModelDocs : Documentation {
@@ -1011,3 +1012,14 @@ This attribute is incompatible with the ``always_inline`` attribute.
   }];
 }
 
+def LoopHintDocs : Documentation {
+  let Category = DocCatStmt;
+  let Content = [{
+The ``#pragma clang loop'' directive allows loop optimization hints to be
+specified for the subsequent loop. The directive allows vectorization
+and interleaving to be enabled or disabled, and the vector width and interleave
+count to be manually specified. See `language extensions
+<http://clang.llvm.org/docs/LanguageExtensions.html#extensions-for-loop-hint-optimizations>'_
+for details.
+  }];
+}

@@ -2466,7 +2466,7 @@ ExprResult Parser::ParseCXXMemberInitializer(Decl *D, bool IsFunction,
             << 1 /* delete */;
         else
           Diag(ConsumeToken(), diag::err_deleted_non_function);
-        return ExprResult();
+        return ExprError();
       }
     } else if (Tok.is(tok::kw_default)) {
       if (IsFunction)
@@ -2474,7 +2474,7 @@ ExprResult Parser::ParseCXXMemberInitializer(Decl *D, bool IsFunction,
           << 0 /* default */;
       else
         Diag(ConsumeToken(), diag::err_default_special_members);
-      return ExprResult();
+      return ExprError();
     }
 
   }
@@ -3390,12 +3390,22 @@ void Parser::ParseCXX11Attributes(ParsedAttributesWithRange &attrs,
 }
 
 void Parser::DiagnoseAndSkipCXX11Attributes() {
-  if (!isCXX11AttributeSpecifier())
-    return;
-
   // Start and end location of an attribute or an attribute list.
   SourceLocation StartLoc = Tok.getLocation();
+  SourceLocation EndLoc = SkipCXX11Attributes();
+
+  if (EndLoc.isValid()) {
+    SourceRange Range(StartLoc, EndLoc);
+    Diag(StartLoc, diag::err_attributes_not_allowed)
+      << Range;
+  }
+}
+
+SourceLocation Parser::SkipCXX11Attributes() {
   SourceLocation EndLoc;
+
+  if (!isCXX11AttributeSpecifier())
+    return EndLoc;
 
   do {
     if (Tok.is(tok::l_square)) {
@@ -3413,11 +3423,7 @@ void Parser::DiagnoseAndSkipCXX11Attributes() {
     }
   } while (isCXX11AttributeSpecifier());
 
-  if (EndLoc.isValid()) {
-    SourceRange Range(StartLoc, EndLoc);
-    Diag(StartLoc, diag::err_attributes_not_allowed)
-      << Range;
-  }
+  return EndLoc;
 }
 
 /// ParseMicrosoftAttributes - Parse a Microsoft attribute [Attr]

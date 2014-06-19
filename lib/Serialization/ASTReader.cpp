@@ -52,10 +52,10 @@
 #include "llvm/Support/Path.h"
 #include "llvm/Support/SaveAndRestore.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/system_error.h"
 #include <algorithm>
 #include <cstdio>
 #include <iterator>
+#include <system_error>
 
 using namespace clang;
 using namespace clang::serialization;
@@ -5022,9 +5022,9 @@ void ASTReader::ReadPragmaDiagnosticMappings(DiagnosticsEngine &Diag) {
         if (DiagID == (unsigned)-1) {
           break; // no more diag/map pairs for this location.
         }
-        diag::Mapping Map = (diag::Mapping)F.PragmaDiagMappings[Idx++];
-        DiagnosticMappingInfo MappingInfo = Diag.makeMappingInfo(Map, Loc);
-        Diag.GetCurDiagState()->setMappingInfo(DiagID, MappingInfo);
+        diag::Severity Map = (diag::Severity)F.PragmaDiagMappings[Idx++];
+        DiagnosticMapping Mapping = Diag.makeUserMapping(Map, Loc);
+        Diag.GetCurDiagState()->setMapping(DiagID, Mapping);
       }
     }
   }
@@ -8088,7 +8088,10 @@ void ASTReader::finishPendingActions() {
     }
 
     // Perform any pending declaration updates.
-    while (!PendingUpdateRecords.empty()) {
+    //
+    // Don't do this if we have known-incomplete redecl chains: it relies on
+    // being able to walk redeclaration chains.
+    while (PendingDeclChains.empty() && !PendingUpdateRecords.empty()) {
       auto Update = PendingUpdateRecords.pop_back_val();
       ReadingKindTracker ReadingKind(Read_Decl, *this);
       loadDeclUpdateRecords(Update.first, Update.second);

@@ -475,9 +475,10 @@ template <typename Self, typename StreamType>
 class PrettyPrinter {
 private:
   bool Verbose;  // Print out additional information
+  bool Cleanup;  // Omit redundant decls.
 
 public:
-  PrettyPrinter(bool V = false) : Verbose(V) { }
+  PrettyPrinter(bool V = false, bool C = true) : Verbose(V), Cleanup(C) { }
 
   static void print(SExpr *E, StreamType &SS) {
     Self printer;
@@ -489,17 +490,6 @@ protected:
 
   void newline(StreamType &SS) {
     SS << "\n";
-  }
-
-  void printBlockLabel(StreamType & SS, BasicBlock *BB, unsigned index) {
-    if (!BB) {
-      SS << "BB_null";
-      return;
-    }
-    SS << "BB_";
-    SS << BB->blockID();
-    SS << ":";
-    SS << index;
   }
 
   // TODO: further distinguish between binary operations.
@@ -554,6 +544,17 @@ protected:
     return Prec_MAX;
   }
 
+  void printBlockLabel(StreamType & SS, BasicBlock *BB, unsigned index) {
+    if (!BB) {
+      SS << "BB_null";
+      return;
+    }
+    SS << "BB_";
+    SS << BB->blockID();
+    SS << ":";
+    SS << index;
+  }
+
   void printSExpr(SExpr *E, StreamType &SS, unsigned P) {
     if (!E) {
       self()->printNull(SS);
@@ -598,9 +599,15 @@ protected:
     SS << E->value();
   }
 
+  void printLiteralT(LiteralT<uint8_t> *E, StreamType &SS) {
+    SS << "'" << E->value() << "'";
+  }
+
   void printLiteral(Literal *E, StreamType &SS) {
-    if (E->clangExpr())
+    if (E->clangExpr()) {
       SS << getSourceLiteralString(E->clangExpr());
+      return;
+    }
     else {
       ValueType VT = E->valueType();
       switch (VT.Base) {
@@ -609,7 +616,7 @@ protected:
         return;
       }
       case ValueType::BT_Bool: {
-        if (reinterpret_cast<LiteralT<bool>*>(E)->value())
+        if (E->as<bool>().value())
           SS << "true";
         else
           SS << "false";
@@ -619,27 +626,27 @@ protected:
         switch (VT.Size) {
         case ValueType::ST_8:
           if (VT.Signed)
-            printLiteralT(reinterpret_cast<LiteralT<int8_t>*>(E), SS);
+            printLiteralT(&E->as<int8_t>(), SS);
           else
-            printLiteralT(reinterpret_cast<LiteralT<uint8_t>*>(E), SS);
+            printLiteralT(&E->as<uint8_t>(), SS);
           return;
         case ValueType::ST_16:
           if (VT.Signed)
-            printLiteralT(reinterpret_cast<LiteralT<int16_t>*>(E), SS);
+            printLiteralT(&E->as<int16_t>(), SS);
           else
-            printLiteralT(reinterpret_cast<LiteralT<uint16_t>*>(E), SS);
+            printLiteralT(&E->as<uint16_t>(), SS);
           return;
         case ValueType::ST_32:
           if (VT.Signed)
-            printLiteralT(reinterpret_cast<LiteralT<int32_t>*>(E), SS);
+            printLiteralT(&E->as<int32_t>(), SS);
           else
-            printLiteralT(reinterpret_cast<LiteralT<uint32_t>*>(E), SS);
+            printLiteralT(&E->as<uint32_t>(), SS);
           return;
         case ValueType::ST_64:
           if (VT.Signed)
-            printLiteralT(reinterpret_cast<LiteralT<int64_t>*>(E), SS);
+            printLiteralT(&E->as<int64_t>(), SS);
           else
-            printLiteralT(reinterpret_cast<LiteralT<uint64_t>*>(E), SS);
+            printLiteralT(&E->as<uint64_t>(), SS);
           return;
         default:
           break;
@@ -649,10 +656,10 @@ protected:
       case ValueType::BT_Float: {
         switch (VT.Size) {
         case ValueType::ST_32:
-          printLiteralT(reinterpret_cast<LiteralT<float>*>(E), SS);
+          printLiteralT(&E->as<float>(), SS);
           return;
         case ValueType::ST_64:
-          printLiteralT(reinterpret_cast<LiteralT<double>*>(E), SS);
+          printLiteralT(&E->as<double>(), SS);
           return;
         default:
           break;
@@ -661,7 +668,7 @@ protected:
       }
       case ValueType::BT_String: {
         SS << "\"";
-        printLiteralT(reinterpret_cast<LiteralT<StringRef>*>(E), SS);
+        printLiteralT(&E->as<StringRef>(), SS);
         SS << "\"";
         return;
       }
@@ -683,20 +690,17 @@ protected:
   }
 
   void printVariable(Variable *V, StreamType &SS, bool IsVarDecl = false) {
-    SExpr* E = nullptr;
-    if (!IsVarDecl) {
-      E = getCanonicalVal(V);
+    if (!IsVarDecl && Cleanup) {
+      SExpr* E = getCanonicalVal(V);
       if (E != V) {
         printSExpr(E, SS, Prec_Atom);
-        if (Verbose) {
-          SS << " /*";
-          SS << V->name() << V->getBlockID() << "_" << V->getID();
-          SS << "*/";
-        }
         return;
       }
     }
-    SS << V->name() << V->getBlockID() << "_" << V->getID();
+    if (V->kind() == Variable::VK_LetBB)
+      SS << V->name() << V->getBlockID() << "_" << V->getID();
+    else
+      SS << V->name() << V->getID();
   }
 
   void printFunction(Function *E, StreamType &SS, unsigned sugared = 0) {
@@ -845,7 +849,7 @@ protected:
     if (E->parent())
       SS << " BB_" << E->parent()->blockID();
     newline(SS);
-    for (auto A : E->arguments()) {
+    for (auto *A : E->arguments()) {
       SS << "let ";
       self()->printVariable(A, SS, true);
       SS << " = ";
@@ -853,7 +857,7 @@ protected:
       SS << ";";
       newline(SS);
     }
-    for (auto I : E->instructions()) {
+    for (auto *I : E->instructions()) {
       if (I->definition()->opcode() != COP_Store) {
         SS << "let ";
         self()->printVariable(I, SS, true);

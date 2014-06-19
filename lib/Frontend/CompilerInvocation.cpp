@@ -33,10 +33,10 @@
 #include "llvm/Support/Host.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Process.h"
-#include "llvm/Support/system_error.h"
 #include <atomic>
 #include <memory>
 #include <sys/stat.h>
+#include <system_error>
 using namespace clang;
 
 //===----------------------------------------------------------------------===//
@@ -309,6 +309,22 @@ static StringRef getCodeModel(ArgList &Args, DiagnosticsEngine &Diags) {
   return "default";
 }
 
+/// \brief Create a new Regex instance out of the string value in \p RpassArg.
+/// It returns a pointer to the newly generated Regex instance.
+static std::shared_ptr<llvm::Regex>
+GenerateOptimizationRemarkRegex(DiagnosticsEngine &Diags, ArgList &Args,
+                                Arg *RpassArg) {
+  StringRef Val = RpassArg->getValue();
+  std::string RegexError;
+  std::shared_ptr<llvm::Regex> Pattern = std::make_shared<llvm::Regex>(Val);
+  if (!Pattern->isValid(RegexError)) {
+    Diags.Report(diag::err_drv_optimization_remark_pattern)
+        << RegexError << RpassArg->getAsString(Args);
+    Pattern.reset();
+  }
+  return Pattern;
+}
+
 static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
                              DiagnosticsEngine &Diags,
                              const TargetOptions &TargetOpts) {
@@ -534,16 +550,17 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
 
   Opts.DependentLibraries = Args.getAllArgValues(OPT_dependent_lib);
 
-  if (Arg *A = Args.getLastArg(OPT_Rpass_EQ)) {
-    StringRef Val = A->getValue();
-    std::string RegexError;
-    Opts.OptimizationRemarkPattern = std::make_shared<llvm::Regex>(Val);
-    if (!Opts.OptimizationRemarkPattern->isValid(RegexError)) {
-      Diags.Report(diag::err_drv_optimization_remark_pattern)
-          << RegexError << A->getAsString(Args);
-      Opts.OptimizationRemarkPattern.reset();
-    }
-  }
+  if (Arg *A = Args.getLastArg(OPT_Rpass_EQ))
+    Opts.OptimizationRemarkPattern =
+        GenerateOptimizationRemarkRegex(Diags, Args, A);
+
+  if (Arg *A = Args.getLastArg(OPT_Rpass_missed_EQ))
+    Opts.OptimizationRemarkMissedPattern =
+        GenerateOptimizationRemarkRegex(Diags, Args, A);
+
+  if (Arg *A = Args.getLastArg(OPT_Rpass_analysis_EQ))
+    Opts.OptimizationRemarkAnalysisPattern =
+        GenerateOptimizationRemarkRegex(Diags, Args, A);
 
   return Success;
 }
@@ -1111,6 +1128,7 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
   Opts.CPlusPlus = Std.isCPlusPlus();
   Opts.CPlusPlus11 = Std.isCPlusPlus11();
   Opts.CPlusPlus1y = Std.isCPlusPlus1y();
+  Opts.CPlusPlus1z = Std.isCPlusPlus1z();
   Opts.Digraphs = Std.hasDigraphs();
   Opts.GNUMode = Std.isGNUMode();
   Opts.GNUInline = !Std.isC99();
@@ -1954,7 +1972,7 @@ createVFSFromCompilerInvocation(const CompilerInvocation &CI,
   // earlier vfs files are on the bottom
   for (const std::string &File : CI.getHeaderSearchOpts().VFSOverlayFiles) {
     std::unique_ptr<llvm::MemoryBuffer> Buffer;
-    if (llvm::errc::success != llvm::MemoryBuffer::getFile(File, Buffer)) {
+    if (llvm::MemoryBuffer::getFile(File, Buffer)) {
       Diags.Report(diag::err_missing_vfs_overlay_file) << File;
       return IntrusiveRefCntPtr<vfs::FileSystem>();
     }

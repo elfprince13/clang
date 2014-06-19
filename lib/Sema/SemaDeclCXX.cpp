@@ -1431,6 +1431,9 @@ Sema::ActOnBaseSpecifier(Decl *classdecl, SourceRange SpecifierRange,
   if (!Class)
     return true;
 
+  // We haven't yet attached the base specifiers.
+  Class->setIsParsingBaseSpecifiers();
+
   // We do not support any C++11 attributes on base-specifiers yet.
   // Diagnose any attributes we see.
   if (!Attributes.empty()) {
@@ -2116,9 +2119,7 @@ Sema::ActOnCXXMemberDeclarator(Scope *S, AccessSpecifier AS, Declarator &D,
     FieldDecl *FD = cast<FieldDecl>(Member);
     FieldCollector->Add(FD);
 
-    if (Diags.getDiagnosticLevel(diag::warn_unused_private_field,
-                                 FD->getLocation())
-          != DiagnosticsEngine::Ignored) {
+    if (!Diags.isIgnored(diag::warn_unused_private_field, FD->getLocation())) {
       // Remember all explicit private FieldDecls that have a name, no side
       // effects and are not part of a dependent type declaration.
       if (!FD->isImplicit() && FD->getDeclName() &&
@@ -2306,9 +2307,8 @@ namespace {
   static void DiagnoseUninitializedFields(
       Sema &SemaRef, const CXXConstructorDecl *Constructor) {
 
-    if (SemaRef.getDiagnostics().getDiagnosticLevel(diag::warn_field_is_uninit,
-                                                    Constructor->getLocation())
-        == DiagnosticsEngine::Ignored) {
+    if (SemaRef.getDiagnostics().isIgnored(diag::warn_field_is_uninit,
+                                           Constructor->getLocation())) {
       return;
     }
 
@@ -3731,9 +3731,8 @@ static void DiagnoseBaseOrMemInitializerOrder(
   bool ShouldCheckOrder = false;
   for (unsigned InitIndex = 0; InitIndex != Inits.size(); ++InitIndex) {
     CXXCtorInitializer *Init = Inits[InitIndex];
-    if (SemaRef.Diags.getDiagnosticLevel(diag::warn_initializer_out_of_order,
-                                         Init->getSourceLocation())
-          != DiagnosticsEngine::Ignored) {
+    if (!SemaRef.Diags.isIgnored(diag::warn_initializer_out_of_order,
+                                 Init->getSourceLocation())) {
       ShouldCheckOrder = true;
       break;
     }
@@ -4348,13 +4347,78 @@ static void CheckAbstractClassUsage(AbstractUsageInfo &Info,
   }
 }
 
-/// \brief Return a DLL attribute from the declaration.
-static InheritableAttr *getDLLAttr(Decl *D) {
-  if (auto *Import = D->getAttr<DLLImportAttr>())
-    return Import;
-  if (auto *Export = D->getAttr<DLLExportAttr>())
-    return Export;
-  return nullptr;
+/// \brief Check class-level dllimport/dllexport attribute.
+static void checkDLLAttribute(Sema &S, CXXRecordDecl *Class) {
+  Attr *ClassAttr = getDLLAttr(Class);
+  if (!ClassAttr)
+    return;
+
+  bool ClassExported = ClassAttr->getKind() == attr::DLLExport;
+
+  // Force declaration of implicit members so they can inherit the attribute.
+  S.ForceDeclarationOfImplicitMembers(Class);
+
+  // FIXME: MSVC's docs say all bases must be exportable, but this doesn't
+  // seem to be true in practice?
+
+  // FIXME: We also need to propagate the attribute upwards to class template
+  // specialization bases.
+
+  for (Decl *Member : Class->decls()) {
+    VarDecl *VD = dyn_cast<VarDecl>(Member);
+    CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(Member);
+
+    // Only methods and static fields inherit the attributes.
+    if (!VD && !MD)
+      continue;
+
+    // Don't process deleted methods.
+    if (MD && MD->isDeleted())
+      continue;
+
+    if (MD && MD->isMoveAssignmentOperator() && !ClassExported &&
+        MD->isInlined()) {
+      // Current MSVC versions don't export the move assignment operators, so
+      // don't attempt to import them if we have a definition.
+      continue;
+    }
+
+    if (InheritableAttr *MemberAttr = getDLLAttr(Member)) {
+      if (S.Context.getTargetInfo().getCXXABI().isMicrosoft() &&
+          !MemberAttr->isInherited()) {
+        S.Diag(MemberAttr->getLocation(),
+               diag::err_attribute_dll_member_of_dll_class)
+            << MemberAttr << ClassAttr;
+        S.Diag(ClassAttr->getLocation(), diag::note_previous_attribute);
+        Member->setInvalidDecl();
+        continue;
+      }
+    } else {
+      auto *NewAttr =
+          cast<InheritableAttr>(ClassAttr->clone(S.getASTContext()));
+      NewAttr->setInherited(true);
+      Member->addAttr(NewAttr);
+    }
+
+    if (CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(Member)) {
+      if (ClassExported) {
+        if (MD->isUserProvided()) {
+          // Instantiate non-default methods.
+          S.MarkFunctionReferenced(Class->getLocation(), MD);
+        } else if (!MD->isTrivial() || MD->isExplicitlyDefaulted() ||
+                   MD->isCopyAssignmentOperator() ||
+                   MD->isMoveAssignmentOperator()) {
+          // Instantiate non-trivial or explicitly defaulted methods, and the
+          // copy assignment / move assignment operators.
+          S.MarkFunctionReferenced(Class->getLocation(), MD);
+          // Resolve its exception specification; CodeGen needs it.
+          auto *FPT = MD->getType()->getAs<FunctionProtoType>();
+          S.ResolveExceptionSpec(Class->getLocation(), FPT);
+          S.ActOnFinishInlineMethodDef(MD);
+        }
+      }
+    }
+  }
 }
 
 /// \brief Perform semantic checks on a class definition that has been
@@ -4521,6 +4585,8 @@ void Sema::CheckCompletedCXXClass(CXXRecordDecl *Record) {
   //   instantiated (e.g. meta-functions). This doesn't apply to classes that
   //   have inheriting constructors.
   DeclareInheritingConstructors(Record);
+
+  checkDLLAttribute(*this, Record);
 }
 
 /// Look up the special member function that would be called by a special
@@ -5890,8 +5956,7 @@ void Sema::DiagnoseHiddenVirtualMethods(CXXMethodDecl *MD) {
   if (MD->isInvalidDecl())
     return;
 
-  if (Diags.getDiagnosticLevel(diag::warn_overloaded_virtual,
-                               MD->getLocation()) == DiagnosticsEngine::Ignored)
+  if (Diags.isIgnored(diag::warn_overloaded_virtual, MD->getLocation()))
     return;
 
   SmallVector<CXXMethodDecl *, 8> OverloadedMethods;
@@ -11287,13 +11352,17 @@ Decl *Sema::ActOnExceptionDeclarator(Scope *S, Declarator &D) {
                                              LookupOrdinaryName,
                                              ForRedeclaration)) {
     // The scope should be freshly made just for us. There is just no way
-    // it contains any previous declaration.
+    // it contains any previous declaration, except for function parameters in
+    // a function-try-block's catch statement.
     assert(!S->isDeclScope(PrevDecl));
-    if (PrevDecl->isTemplateParameter()) {
+    if (isDeclInScope(PrevDecl, CurContext, S)) {
+      Diag(D.getIdentifierLoc(), diag::err_redefinition)
+        << D.getIdentifier();
+      Diag(PrevDecl->getLocation(), diag::note_previous_definition);
+      Invalid = true;
+    } else if (PrevDecl->isTemplateParameter())
       // Maybe we will complain about the shadowed template parameter.
       DiagnoseTemplateParameterShadow(D.getIdentifierLoc(), PrevDecl);
-      PrevDecl = nullptr;
-    }
   }
 
   if (D.getCXXScopeSpec().isSet() && !Invalid) {
@@ -11337,6 +11406,8 @@ Decl *Sema::BuildStaticAssertDeclaration(SourceLocation StaticAssertLoc,
                                          StringLiteral *AssertMessage,
                                          SourceLocation RParenLoc,
                                          bool Failed) {
+  assert(AssertExpr != nullptr && AssertMessage != nullptr &&
+         "Expected non-null Expr's");
   if (!AssertExpr->isTypeDependent() && !AssertExpr->isValueDependent() &&
       !Failed) {
     // In a static_assert-declaration, the constant-expression shall be a
@@ -12378,7 +12449,9 @@ void Sema::MarkVTableUsed(SourceLocation Loc, CXXRecordDecl *Class,
         Class->hasUserDeclaredDestructor() &&
         !Class->getDestructor()->isDefined() &&
         !Class->getDestructor()->isDeleted()) {
-      CheckDestructor(Class->getDestructor());
+      CXXDestructorDecl *DD = Class->getDestructor();
+      ContextRAII SavedContext(*this, DD);
+      CheckDestructor(DD);
     }
   }
 

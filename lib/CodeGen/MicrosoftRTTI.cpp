@@ -51,6 +51,43 @@ using namespace CodeGen;
 //   vbtable.  The names of the BaseClassDescriptors have all of their fields
 //   mangled into them so they can be aggressively deduplicated by the linker.
 
+static bool isImageRelative(CodeGenModule &CGM) {
+  return CGM.getTarget().getPointerWidth(/*AddressSpace=*/0) == 64;
+}
+
+static llvm::Type *getImageRelativeType(CodeGenModule &CGM,
+                                        llvm::Type *PtrType) {
+  if (!isImageRelative(CGM))
+    return PtrType;
+  return CGM.IntTy;
+}
+
+static llvm::GlobalVariable *getImageBase(CodeGenModule &CGM) {
+  StringRef Name = "__ImageBase";
+  if (llvm::GlobalVariable *GV = CGM.getModule().getNamedGlobal(Name))
+    return GV;
+
+  return new llvm::GlobalVariable(CGM.getModule(), CGM.Int8Ty,
+                                  /*isConstant=*/true,
+                                  llvm::GlobalValue::ExternalLinkage,
+                                  /*Initializer=*/nullptr, Name);
+}
+
+static llvm::Constant *getImageRelativeConstant(CodeGenModule &CGM,
+                                                llvm::Constant *PtrVal) {
+  if (!isImageRelative(CGM))
+    return PtrVal;
+
+  llvm::Constant *ImageBaseAsInt =
+      llvm::ConstantExpr::getPtrToInt(getImageBase(CGM), CGM.IntPtrTy);
+  llvm::Constant *PtrValAsInt =
+      llvm::ConstantExpr::getPtrToInt(PtrVal, CGM.IntPtrTy);
+  llvm::Constant *Diff =
+      llvm::ConstantExpr::getSub(PtrValAsInt, ImageBaseAsInt,
+                                 /*HasNUW=*/true, /*HasNSW=*/true);
+  return llvm::ConstantExpr::getTrunc(Diff, CGM.IntTy);
+}
+
 // 5 routines for constructing the llvm types for MS RTTI structs.
 static llvm::StructType *getClassHierarchyDescriptorType(CodeGenModule &CGM);
 
@@ -72,13 +109,15 @@ static llvm::StructType *getBaseClassDescriptorType(CodeGenModule &CGM) {
   if (auto Type = CGM.getModule().getTypeByName(Name))
     return Type;
   llvm::Type *FieldTypes[] = {
-      CGM.Int8PtrTy,
+      getImageRelativeType(CGM, CGM.Int8PtrTy),
       CGM.IntTy,
       CGM.IntTy,
       CGM.IntTy,
       CGM.IntTy,
       CGM.IntTy,
-      getClassHierarchyDescriptorType(CGM)->getPointerTo()};
+      getImageRelativeType(
+          CGM, getClassHierarchyDescriptorType(CGM)->getPointerTo()),
+  };
   return llvm::StructType::create(CGM.getLLVMContext(), FieldTypes, Name);
 }
 
@@ -86,13 +125,16 @@ static llvm::StructType *getClassHierarchyDescriptorType(CodeGenModule &CGM) {
   static const char Name[] = "MSRTTIClassHierarchyDescriptor";
   if (auto Type = CGM.getModule().getTypeByName(Name))
     return Type;
-  // Forward declare RTTIClassHierarchyDescriptor to break a cycle.
+  // Forward-declare RTTIClassHierarchyDescriptor to break a cycle.
   llvm::StructType *Type = llvm::StructType::create(CGM.getLLVMContext(), Name);
   llvm::Type *FieldTypes[] = {
     CGM.IntTy,
     CGM.IntTy,
     CGM.IntTy,
-    getBaseClassDescriptorType(CGM)->getPointerTo()->getPointerTo()};
+    getImageRelativeType(
+        CGM,
+        getBaseClassDescriptorType(CGM)->getPointerTo()->getPointerTo()),
+  };
   Type->setBody(FieldTypes);
   return Type;
 }
@@ -101,13 +143,21 @@ static llvm::StructType *getCompleteObjectLocatorType(CodeGenModule &CGM) {
   static const char Name[] = "MSRTTICompleteObjectLocator";
   if (auto Type = CGM.getModule().getTypeByName(Name))
     return Type;
+  llvm::StructType *Type = llvm::StructType::create(CGM.getLLVMContext(), Name);
   llvm::Type *FieldTypes[] = {
     CGM.IntTy,
     CGM.IntTy,
     CGM.IntTy,
-    CGM.Int8PtrTy,
-    getClassHierarchyDescriptorType(CGM)->getPointerTo() };
-  return llvm::StructType::create(CGM.getLLVMContext(), FieldTypes, Name);
+    getImageRelativeType(CGM, CGM.Int8PtrTy),
+    getImageRelativeType(
+        CGM, getClassHierarchyDescriptorType(CGM)->getPointerTo()),
+    getImageRelativeType(CGM, Type),
+  };
+  llvm::ArrayRef<llvm::Type *> FieldTypesRef(
+      std::begin(FieldTypes),
+      isImageRelative(CGM) ? std::end(FieldTypes) : std::end(FieldTypes) - 1);
+  Type->setBody(FieldTypesRef);
+  return Type;
 }
 
 static llvm::GlobalVariable *getTypeInfoVTable(CodeGenModule &CGM) {
@@ -117,7 +167,7 @@ static llvm::GlobalVariable *getTypeInfoVTable(CodeGenModule &CGM) {
   return new llvm::GlobalVariable(CGM.getModule(), CGM.Int8PtrTy,
                                   /*Constant=*/true,
                                   llvm::GlobalVariable::ExternalLinkage,
-                                  /*Initializer=*/0, MangledName);
+                                  /*Initializer=*/nullptr, MangledName);
 }
 
 namespace {
@@ -154,7 +204,7 @@ uint32_t MSRTTIClass::initialize(const MSRTTIClass *Parent,
                                  const CXXBaseSpecifier *Specifier) {
   Flags = HasHierarchyDescriptor;
   if (!Parent) {
-    VirtualRoot = 0;
+    VirtualRoot = nullptr;
     OffsetInVBase = 0;
   } else {
     if (Specifier->getAccessSpecifier() != AS_public)
@@ -256,10 +306,10 @@ llvm::GlobalVariable *MSRTTIBuilder::getClassHierarchyDescriptor() {
   if (auto CHD = Module.getNamedGlobal(MangledName))
     return CHD;
 
-  // Serialize the class hierarchy and initalize the CHD Fields.
+  // Serialize the class hierarchy and initialize the CHD Fields.
   SmallVector<MSRTTIClass, 8> Classes;
   serializeClassHierarchy(Classes, RD);
-  Classes.front().initialize(/*Parent=*/0, /*Specifier=*/0);
+  Classes.front().initialize(/*Parent=*/nullptr, /*Specifier=*/nullptr);
   detectAmbiguousBases(Classes);
   int Flags = 0;
   for (auto Class : Classes) {
@@ -277,19 +327,22 @@ llvm::GlobalVariable *MSRTTIBuilder::getClassHierarchyDescriptor() {
   llvm::Value *GEPIndices[] = {llvm::ConstantInt::get(CGM.IntTy, 0),
                                llvm::ConstantInt::get(CGM.IntTy, 0)};
 
-  // Forward declare the class hierarchy descriptor
+  // Forward-declare the class hierarchy descriptor
   auto Type = getClassHierarchyDescriptorType(CGM);
   auto CHD = new llvm::GlobalVariable(Module, Type, /*Constant=*/true, Linkage,
-                                      /*Initializer=*/0, MangledName.c_str());
+                                      /*Initializer=*/nullptr,
+                                      MangledName.c_str());
 
   // Initialize the base class ClassHierarchyDescriptor.
   llvm::Constant *Fields[] = {
     llvm::ConstantInt::get(CGM.IntTy, 0), // Unknown
     llvm::ConstantInt::get(CGM.IntTy, Flags),
     llvm::ConstantInt::get(CGM.IntTy, Classes.size()),
-    llvm::ConstantExpr::getInBoundsGetElementPtr(
-        getBaseClassArray(Classes),
-        llvm::ArrayRef<llvm::Value *>(GEPIndices))};
+    getImageRelativeConstant(CGM,
+                             llvm::ConstantExpr::getInBoundsGetElementPtr(
+                                 getBaseClassArray(Classes),
+                                 llvm::ArrayRef<llvm::Value *>(GEPIndices))),
+  };
   CHD->setInitializer(llvm::ConstantStruct::get(Type, Fields));
   return CHD;
 }
@@ -302,21 +355,23 @@ MSRTTIBuilder::getBaseClassArray(SmallVectorImpl<MSRTTIClass> &Classes) {
     Mangler.mangleCXXRTTIBaseClassArray(RD, Out);
   }
 
-  // Foward declare the base class array.
+  // Forward-declare the base class array.
   // cl.exe pads the base class array with 1 (in 32 bit mode) or 4 (in 64 bit
   // mode) bytes of padding.  We provide a pointer sized amount of padding by
   // adding +1 to Classes.size().  The sections have pointer alignment and are
   // marked pick-any so it shouldn't matter.
-  auto PtrType = getBaseClassDescriptorType(CGM)->getPointerTo();
+  auto PtrType = getImageRelativeType(
+      CGM, getBaseClassDescriptorType(CGM)->getPointerTo());
   auto ArrayType = llvm::ArrayType::get(PtrType, Classes.size() + 1);
   auto BCA = new llvm::GlobalVariable(Module, ArrayType,
-      /*Constant=*/true, Linkage, /*Initializer=*/0, MangledName.c_str());
+      /*Constant=*/true, Linkage, /*Initializer=*/nullptr, MangledName.c_str());
 
   // Initialize the BaseClassArray.
   SmallVector<llvm::Constant *, 8> BaseClassArrayData;
   for (MSRTTIClass &Class : Classes)
-    BaseClassArrayData.push_back(getBaseClassDescriptor(Class));
-  BaseClassArrayData.push_back(llvm::ConstantPointerNull::get(PtrType));
+    BaseClassArrayData.push_back(
+        getImageRelativeConstant(CGM, getBaseClassDescriptor(Class)));
+  BaseClassArrayData.push_back(llvm::Constant::getNullValue(PtrType));
   BCA->setInitializer(llvm::ConstantArray::get(ArrayType, BaseClassArrayData));
   return BCA;
 }
@@ -345,20 +400,24 @@ MSRTTIBuilder::getBaseClassDescriptor(const MSRTTIClass &Class) {
   if (auto BCD = Module.getNamedGlobal(MangledName))
     return BCD;
 
-  // Forward declare the base class descriptor.
+  // Forward-declare the base class descriptor.
   auto Type = getBaseClassDescriptorType(CGM);
   auto BCD = new llvm::GlobalVariable(Module, Type, /*Constant=*/true, Linkage,
-                                      /*Initializer=*/0, MangledName.c_str());
+                                      /*Initializer=*/nullptr,
+                                      MangledName.c_str());
 
   // Initialize the BaseClassDescriptor.
   llvm::Constant *Fields[] = {
-    CGM.getMSTypeDescriptor(Context.getTypeDeclType(Class.RD)),
+    getImageRelativeConstant(
+        CGM, CGM.getMSTypeDescriptor(Context.getTypeDeclType(Class.RD))),
     llvm::ConstantInt::get(CGM.IntTy, Class.NumBases),
     llvm::ConstantInt::get(CGM.IntTy, Class.OffsetInVBase),
     llvm::ConstantInt::get(CGM.IntTy, VBPtrOffset),
     llvm::ConstantInt::get(CGM.IntTy, OffsetInVBTable),
     llvm::ConstantInt::get(CGM.IntTy, Class.Flags),
-    MSRTTIBuilder(CGM, Class.RD).getClassHierarchyDescriptor()};
+    getImageRelativeConstant(
+        CGM, MSRTTIBuilder(CGM, Class.RD).getClassHierarchyDescriptor()),
+  };
   BCD->setInitializer(llvm::ConstantStruct::get(Type, Fields));
   return BCD;
 }
@@ -386,19 +445,25 @@ MSRTTIBuilder::getCompleteObjectLocator(const VPtrInfo *Info) {
       ->second.hasVtorDisp())
       VFPtrOffset = Info->NonVirtualOffset.getQuantity() + 4;
 
-  // Forward declare the complete object locator.
+  // Forward-declare the complete object locator.
   llvm::StructType *Type = getCompleteObjectLocatorType(CGM);
   auto COL = new llvm::GlobalVariable(Module, Type, /*Constant=*/true, Linkage,
-    /*Initializer=*/0, MangledName.c_str());
+    /*Initializer=*/nullptr, MangledName.c_str());
 
   // Initialize the CompleteObjectLocator.
   llvm::Constant *Fields[] = {
-    llvm::ConstantInt::get(CGM.IntTy, 0), // IsDeltaEncoded
+    llvm::ConstantInt::get(CGM.IntTy, isImageRelative(CGM)),
     llvm::ConstantInt::get(CGM.IntTy, OffsetToTop),
     llvm::ConstantInt::get(CGM.IntTy, VFPtrOffset),
-    CGM.getMSTypeDescriptor(Context.getTypeDeclType(RD)),
-    getClassHierarchyDescriptor()};
-  COL->setInitializer(llvm::ConstantStruct::get(Type, Fields));
+    getImageRelativeConstant(
+        CGM, CGM.getMSTypeDescriptor(Context.getTypeDeclType(RD))),
+    getImageRelativeConstant(CGM, getClassHierarchyDescriptor()),
+    getImageRelativeConstant(CGM, COL),
+  };
+  llvm::ArrayRef<llvm::Constant *> FieldsRef(Fields);
+  if (!isImageRelative(CGM))
+    FieldsRef = FieldsRef.slice(0, FieldsRef.size() - 1);
+  COL->setInitializer(llvm::ConstantStruct::get(Type, FieldsRef));
   return COL;
 }
 

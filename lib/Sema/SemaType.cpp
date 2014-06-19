@@ -5127,7 +5127,7 @@ static bool hasVisibleDefinition(Sema &S, NamedDecl *D, NamedDecl **Suggested) {
       ED = NewED;
     if (ED->isFixed()) {
       // If the enum has a fixed underlying type, any declaration of it will do.
-      *Suggested = 0;
+      *Suggested = nullptr;
       for (auto *Redecl : ED->redecls()) {
         if (LookupResult::isVisible(S, Redecl))
           return true;
@@ -5147,6 +5147,45 @@ static bool hasVisibleDefinition(Sema &S, NamedDecl *D, NamedDecl **Suggested) {
   return LookupResult::isVisible(S, D);
 }
 
+/// Locks in the inheritance model for the given class and all of its bases.
+static void assignInheritanceModel(Sema &S, CXXRecordDecl *RD) {
+  RD = RD->getMostRecentDecl();
+  if (!RD->hasAttr<MSInheritanceAttr>()) {
+    MSInheritanceAttr::Spelling IM;
+
+    switch (S.MSPointerToMemberRepresentationMethod) {
+    case LangOptions::PPTMK_BestCase:
+      IM = RD->calculateInheritanceModel();
+      break;
+    case LangOptions::PPTMK_FullGeneralitySingleInheritance:
+      IM = MSInheritanceAttr::Keyword_single_inheritance;
+      break;
+    case LangOptions::PPTMK_FullGeneralityMultipleInheritance:
+      IM = MSInheritanceAttr::Keyword_multiple_inheritance;
+      break;
+    case LangOptions::PPTMK_FullGeneralityVirtualInheritance:
+      IM = MSInheritanceAttr::Keyword_unspecified_inheritance;
+      break;
+    }
+
+    RD->addAttr(MSInheritanceAttr::CreateImplicit(
+        S.getASTContext(), IM,
+        /*BestCase=*/S.MSPointerToMemberRepresentationMethod ==
+            LangOptions::PPTMK_BestCase,
+        S.ImplicitMSInheritanceAttrLoc.isValid()
+            ? S.ImplicitMSInheritanceAttrLoc
+            : RD->getSourceRange()));
+  }
+
+  if (RD->hasDefinition()) {
+    // Assign inheritance models to all of the base classes, because now we can
+    // form pointers to members of base classes without calling
+    // RequireCompleteType on the pointer to member of the base class type.
+    for (const CXXBaseSpecifier &BS : RD->bases())
+      assignInheritanceModel(S, BS.getType()->getAsCXXRecordDecl());
+  }
+}
+
 /// \brief The implementation of RequireCompleteType
 bool Sema::RequireCompleteTypeImpl(SourceLocation Loc, QualType T,
                                    TypeDiagnoser &Diagnoser) {
@@ -5162,7 +5201,7 @@ bool Sema::RequireCompleteTypeImpl(SourceLocation Loc, QualType T,
   NamedDecl *Def = nullptr;
   if (!T->isIncompleteType(&Def)) {
     // If we know about the definition but it is not visible, complain.
-    NamedDecl *SuggestedDef = 0;
+    NamedDecl *SuggestedDef = nullptr;
     if (!Diagnoser.Suppressed && Def &&
         !hasVisibleDefinition(*this, Def, &SuggestedDef)) {
       // Suppress this error outside of a SFINAE context if we've already
@@ -5185,36 +5224,7 @@ bool Sema::RequireCompleteTypeImpl(SourceLocation Loc, QualType T,
       if (const MemberPointerType *MPTy = T->getAs<MemberPointerType>()) {
         if (!MPTy->getClass()->isDependentType()) {
           RequireCompleteType(Loc, QualType(MPTy->getClass(), 0), 0);
-
-          CXXRecordDecl *RD = MPTy->getMostRecentCXXRecordDecl();
-          if (!RD->hasAttr<MSInheritanceAttr>()) {
-            MSInheritanceAttr::Spelling InheritanceModel;
-
-            switch (MSPointerToMemberRepresentationMethod) {
-            case LangOptions::PPTMK_BestCase:
-              InheritanceModel = RD->calculateInheritanceModel();
-              break;
-            case LangOptions::PPTMK_FullGeneralitySingleInheritance:
-              InheritanceModel = MSInheritanceAttr::Keyword_single_inheritance;
-              break;
-            case LangOptions::PPTMK_FullGeneralityMultipleInheritance:
-              InheritanceModel =
-                  MSInheritanceAttr::Keyword_multiple_inheritance;
-              break;
-            case LangOptions::PPTMK_FullGeneralityVirtualInheritance:
-              InheritanceModel =
-                  MSInheritanceAttr::Keyword_unspecified_inheritance;
-              break;
-            }
-
-            RD->addAttr(MSInheritanceAttr::CreateImplicit(
-                getASTContext(), InheritanceModel,
-                /*BestCase=*/MSPointerToMemberRepresentationMethod ==
-                    LangOptions::PPTMK_BestCase,
-                ImplicitMSInheritanceAttrLoc.isValid()
-                    ? ImplicitMSInheritanceAttrLoc
-                    : RD->getSourceRange()));
-          }
+          assignInheritanceModel(*this, MPTy->getMostRecentCXXRecordDecl());
         }
       }
     }
@@ -5557,12 +5567,23 @@ QualType Sema::BuildUnaryTransformType(QualType BaseType,
     } else {
       QualType Underlying = BaseType;
       if (!BaseType->isDependentType()) {
+        // The enum could be incomplete if we're parsing its definition or
+        // recovering from an error.
+        NamedDecl *FwdDecl = nullptr;
+        if (BaseType->isIncompleteType(&FwdDecl)) {
+          Diag(Loc, diag::err_underlying_type_of_incomplete_enum) << BaseType;
+          Diag(FwdDecl->getLocation(), diag::note_forward_declaration) << FwdDecl;
+          return QualType();
+        }
+
         EnumDecl *ED = BaseType->getAs<EnumType>()->getDecl();
         assert(ED && "EnumType has no EnumDecl");
+
         DiagnoseUseOfDecl(ED, Loc);
+
         Underlying = ED->getIntegerType();
+        assert(!Underlying.isNull());
       }
-      assert(!Underlying.isNull());
       return Context.getUnaryTransformType(BaseType, Underlying,
                                         UnaryTransformType::EnumUnderlyingType);
     }
