@@ -27,7 +27,7 @@ Parser::DeclGroupPtrTy Parser::ParseTopLevelSkeleton() {
 
 
 Parser::StmtResult Parser::ParseSkeleton(SourceLocation AtLoc){
-	StmtResult ret;
+	StmtResult ret = StmtResult();
 	SmallVector<IdentifierInfo*, 8> paramNames;
 	SmallVector<Expr*, 8> paramExprs;
 	IdentifierInfo *is;
@@ -106,7 +106,10 @@ Parser::StmtResult Parser::ParseSkeleton(SourceLocation AtLoc){
 			InnerScope.Exit();
 			SkelScope.Exit();
 			
-			ret = Actions.ActOnSkeletonStmt(AtLoc, SkelLoc, ii, is, paramNames, paramExprs, body.get(), handler); //handler(SkelLoc);
+			if (!
+				ret.isInvalid()){
+				ret = Actions.ActOnSkeletonStmt(AtLoc, SkelLoc, ii, is, paramNames, paramExprs, body.get(), handler); //handler(SkelLoc);
+			}
 		}
 	} else {
 		ret = StmtError(Diag(Tok, diag::err_unexpected_at));
