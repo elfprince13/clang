@@ -875,15 +875,23 @@ SkeletonStmt::SkeletonStmt(const ASTContext &C,
 	
 }
 
-void SkeletonStmt::setParams(const ASTContext &C, Expr **Params,
+void SkeletonStmt::setParams(const ASTContext &C,
+							 IdentifierInfo **ParamNames, Expr **Params,
                             unsigned NumParams) {
+	assert(!((this->ParamNames == nullptr) ^ (this->SubExprs == nullptr))
+		   && "names or subexprs initialized, but not both");
+	
 	Stmt *Body = nullptr;
 	if (this->SubExprs){
 		Body = SubExprs[body];
 		C.Deallocate(SubExprs);
+		C.Deallocate(this->ParamNames);
 	}
 	body = NumParams;
 	numExprs = body + 1;
+	
+	this->ParamNames = new (C) IdentifierInfo*[body];
+	memcpy(this->ParamNames, ParamNames, sizeof(IdentifierInfo*) * body);
 	
 	SubExprs = new (C) Stmt*[numExprs];
 	memcpy(SubExprs, Params, sizeof(Stmt *) * numExprs);

@@ -233,9 +233,29 @@ void ASTStmtReader::VisitDoStmt(DoStmt *S) {
   S->setRParenLoc(ReadSourceLocation(Record, Idx));
 }
 
+
 void ASTStmtReader::VisitSkeletonStmt(SkeletonStmt *S){
 	VisitStmt(S);
-	S->setBody(Reader.ReadSubStmt());
+	
+	SmallVector<Expr *, 16> Params;
+	SmallVector<IdentifierInfo *, 16> ParamNames;
+	unsigned NumParams = Record[Idx++];
+	for(int i = NumParams; i; i--) Params.push_back(Reader.ReadSubExpr());
+	
+	Stmt *Body = Reader.ReadSubStmt();
+	
+	S->setKind(Reader.GetIdentifierInfo(F, Record, Idx));
+	S->setName(Reader.GetIdentifierInfo(F, Record, Idx));
+	
+	for(int i = NumParams; i; i--) ParamNames.push_back(Reader.GetIdentifierInfo(F, Record, Idx));
+	
+	S->setParams(Reader.getContext(), ParamNames.data(), Params.data(), NumParams);
+	S->setBody(Body);
+	
+	S->setAtLoc(ReadSourceLocation(Record, Idx));
+	S->setSkelLoc(ReadSourceLocation(Record, Idx));
+	
+	
 }
 
 void ASTStmtReader::VisitForStmt(ForStmt *S) {

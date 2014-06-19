@@ -1166,9 +1166,24 @@ public:
 			SubExprs[body] = S;
 		}
 		
-		void setParams(const ASTContext &C, Expr **Params, unsigned NumParams);
+		void setKind(IdentifierInfo *k){ kind = k; }
+		void setName(IdentifierInfo *n){ kind = name; }
 		
-		SourceLocation getLocStart() const LLVM_READONLY { return AtLoc; }
+		IdentifierInfo* getKind(){ return kind; }
+		IdentifierInfo* getName(){ return name; }
+		
+		int getNumParams(){ return body; }
+		IdentifierInfo const* const* getParamNames() const { return ParamNames; }
+		
+		
+		void setParams(const ASTContext &C, IdentifierInfo **ParamNames, Expr **Params, unsigned NumParams);
+		
+		void setAtLoc(SourceLocation al){ AtLoc = al; }
+		void setSkelLoc(SourceLocation sl){ SkelLoc = sl; }
+		
+		SourceLocation getAtLoc() const LLVM_READONLY { return AtLoc; }
+		SourceLocation getSkelLoc() const LLVM_READONLY { return SkelLoc; }
+		SourceLocation getLocStart() const LLVM_READONLY { return getAtLoc(); }
 		SourceLocation getLocEnd() const LLVM_READONLY {
 			assert((body >= 0) && "getLocEnd");
 			return SubExprs[body]->getLocEnd();

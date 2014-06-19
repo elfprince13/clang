@@ -162,7 +162,17 @@ void ASTStmtWriter::VisitDoStmt(DoStmt *S) {
 
 void ASTStmtWriter::VisitSkeletonStmt(SkeletonStmt *S){
 	VisitStmt(S);
-	Writer.AddStmt(S->getBody());
+	int n = S->getNumParams();
+	Record.push_back(n);
+	for (auto *CS : S->children())
+		Writer.AddStmt(CS);
+	
+	Writer.AddIdentifierRef(S->getKind(), Record);
+	Writer.AddIdentifierRef(S->getName(), Record);
+	for(int i = 0; i < n; i++) Writer.AddIdentifierRef(S->getParamNames()[i], Record);
+	
+	Writer.AddSourceLocation(S->getAtLoc(), Record);
+	Writer.AddSourceLocation(S->getSkelLoc(), Record);
 	Code = serialization::STMT_SKELETON;
 }
 
