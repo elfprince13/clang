@@ -73,6 +73,7 @@ def _SLASH_Gw_ : CLFlag<"Gw-">, HelpText<"Don't put each data item in its own se
 def _SLASH_help : CLFlag<"help">, Alias<help>,
   HelpText<"Display available options">;
 def _SLASH_HELP : CLFlag<"HELP">, Alias<help>;
+def _SLASH_SKEL_DIR : CLJoinedOrSeparate<"@">, HelpText<"Add directory to skeleton search path">, MetaVarName<"<dir>">, Alias<SKEL_DIR>;
 def _SLASH_I : CLJoinedOrSeparate<"I">,
   HelpText<"Add directory to include search path">, MetaVarName<"<dir>">,
   Alias<I>;

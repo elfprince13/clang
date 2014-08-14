@@ -28,6 +28,7 @@
 #include "llvm/Option/OptTable.h"
 #include "llvm/Option/Option.h"
 #include "llvm/Support/CodeGen.h"
+#include "llvm/Support/DynamicLibrary.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Host.h"
@@ -952,6 +953,17 @@ std::string CompilerInvocation::GetResourcesPath(const char *Argv0,
   return P.str();
 }
 
+static void ParseSkeletonSearchArgs(SkeletonSearchOptions &Opts, ArgList &Args) {
+	using namespace options;
+	Opts.Sysroot = Args.getLastArgValue(OPT_sksysroot, "/");
+	
+	for (arg_iterator it = Args.filtered_begin(OPT_SKEL_DIR),
+		 ie = Args.filtered_end();
+		 it != ie; ++it) {
+		Opts.AddPath((*it)->getValue(), true);
+	}
+}
+
 static void ParseHeaderSearchArgs(HeaderSearchOptions &Opts, ArgList &Args) {
   using namespace options;
   Opts.Sysroot = Args.getLastArgValue(OPT_isysroot, "/");
@@ -1765,6 +1777,32 @@ bool CompilerInvocation::CreateFromArgs(CompilerInvocation &Res,
   Success = ParseCodeGenArgs(Res.getCodeGenOpts(), *Args, DashX, Diags,
                              Res.getTargetOpts()) && Success;
   ParseHeaderSearchArgs(Res.getHeaderSearchOpts(), *Args);
+	ParseSkeletonSearchArgs(Res.getSkeletonSearchOpts(), *Args);
+	
+	// Re-use the file manager between the skeleton search and the preprocessor argument parsing.
+	FileManager FileMgr(Res.getFileSystemOpts());
+	
+	std::vector<SkeletonSearchOptions::Entry> skelPaths = Res.getSkeletonSearchOpts().UserEntries;
+	for(std::vector<SkeletonSearchOptions::Entry>::iterator it = skelPaths.begin(); it != skelPaths.end(); ++it){
+		std::string path = (*it).Path;
+		DirectoryEntry dir = *FileMgr.getDirectory(path);
+		std::error_code EC;
+		EC.clear();
+		for(llvm::sys::fs::directory_iterator File(dir.getName(), EC), FileEnd;
+			File != FileEnd && !EC; File.increment(EC)	){
+			StringRef Extension = llvm::sys::path::extension(File->path());
+			StringRef Stem = llvm::sys::path::stem(File->path());
+			if ((Extension == ".so" || Extension != ".dylib" || Extension != ".bundle") && Stem.startswith("libClangSkelImpl-")) {
+				std::string ldErr;
+				if(llvm::sys::DynamicLibrary::LoadLibraryPermanently(File->path().c_str(), &ldErr)){
+					Diags.Report(diag::err_fe_unable_to_load_plugin)
+					<< File->path() << ldErr;
+				}
+			}
+		}
+		
+	}
+	
   if (DashX != IK_AST && DashX != IK_LLVM_IR) {
     ParseLangArgs(*Res.getLangOpts(), *Args, DashX, Diags);
     if (Res.getFrontendOpts().ProgramAction == frontend::RewriteObjC)
@@ -1774,7 +1812,6 @@ bool CompilerInvocation::CreateFromArgs(CompilerInvocation &Res,
   // PCH file and find the original header name. Remove the need to do that in
   // ParsePreprocessorArgs and remove the FileManager 
   // parameters from the function and the "FileManager.h" #include.
-  FileManager FileMgr(Res.getFileSystemOpts());
   ParsePreprocessorArgs(Res.getPreprocessorOpts(), *Args, FileMgr, Diags);
   ParsePreprocessorOutputArgs(Res.getPreprocessorOutputOpts(), *Args,
                               Res.getFrontendOpts().ProgramAction);

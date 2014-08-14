@@ -218,6 +218,8 @@ def H : Flag<["-"], "H">, Flags<[CC1Option]>,
 def I_ : Flag<["-"], "I-">, Group<I_Group>;
 def I : JoinedOrSeparate<["-"], "I">, Group<I_Group>, Flags<[CC1Option]>,
     HelpText<"Add directory to include search path">;
+def SKEL_DIR : JoinedOrSeparate<["-"], "@">, Group<CompileOnly_Group>, Flags<[CC1Option]>,
+HelpText<"Add directory to skeleton search path">;
 def L : JoinedOrSeparate<["-"], "L">, Flags<[RenderJoined]>;
 def MD : Flag<["-"], "MD">, Group<M_Group>,
     HelpText<"Write a depfile containing user and system headers">;
@@ -982,6 +984,8 @@ def iquote : JoinedOrSeparate<["-"], "iquote">, Group<clang_i_Group>, Flags<[CC1
   HelpText<"Add directory to QUOTE include search path">, MetaVarName<"<directory>">;
 def isysroot : JoinedOrSeparate<["-"], "isysroot">, Group<clang_i_Group>, Flags<[CC1Option]>,
   HelpText<"Set the system root directory (usually /)">, MetaVarName<"<dir>">;
+def sksysroot : JoinedOrSeparate<["-"], "sksysroot">, Group<CompileOnly_Group>, Flags<[CC1Option]>,
+HelpText<"Set the system root directory for skeletons (usually /)">, MetaVarName<"<dir>">;
 def isystem : JoinedOrSeparate<["-"], "isystem">, Group<clang_i_Group>, Flags<[CC1Option]>,
   HelpText<"Add directory to SYSTEM include search path">, MetaVarName<"<directory>">;
 def iwithprefixbefore : JoinedOrSeparate<["-"], "iwithprefixbefore">, Group<clang_i_Group>,
