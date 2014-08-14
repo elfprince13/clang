@@ -119,38 +119,39 @@ void test_collapse() {
     ;
 #pragma omp parallel
 // expected-error@+2 {{expected ')'}}
-// expected-note@+1 {{to match this '('}}
+// expected-note@+1 {{to match this '('}} expected-note@+1 {{as specified in 'collapse' clause}}
 #pragma omp for collapse(4
   for (i = 0; i < 16; ++i)
-    ;
+    ; // expected-error {{expected 4 for loops after '#pragma omp for', but found only 1}}
 #pragma omp parallel
 // expected-error@+2 {{expected ')'}}
-// expected-note@+1 {{to match this '('}}
+// expected-note@+1 {{to match this '('}} expected-note@+1 {{as specified in 'collapse' clause}}
 #pragma omp for collapse(4,
   for (i = 0; i < 16; ++i)
-    ;
+    ; // expected-error {{expected 4 for loops after '#pragma omp for', but found only 1}}
 #pragma omp parallel
 // expected-error@+2 {{expected ')'}}
-// expected-note@+1 {{to match this '('}}
+// expected-note@+1 {{to match this '('}} expected-note@+1 {{as specified in 'collapse' clause}}
 #pragma omp for collapse(4, )
   for (i = 0; i < 16; ++i)
-    ;
+    ; // expected-error {{expected 4 for loops after '#pragma omp for', but found only 1}}
 #pragma omp parallel
+// expected-note@+1 {{as specified in 'collapse' clause}}
 #pragma omp for collapse(4)
   for (i = 0; i < 16; ++i)
-    ;
+    ; // expected-error {{expected 4 for loops after '#pragma omp for', but found only 1}}
 #pragma omp parallel
 // expected-error@+2 {{expected ')'}}
-// expected-note@+1 {{to match this '('}}
+// expected-note@+1 {{to match this '('}} expected-note@+1 {{as specified in 'collapse' clause}}
 #pragma omp for collapse(4 4)
   for (i = 0; i < 16; ++i)
-    ;
+    ; // expected-error {{expected 4 for loops after '#pragma omp for', but found only 1}}
 #pragma omp parallel
 // expected-error@+2 {{expected ')'}}
-// expected-note@+1 {{to match this '('}}
+// expected-note@+1 {{to match this '('}} expected-note@+1 {{as specified in 'collapse' clause}}
 #pragma omp for collapse(4, , 4)
   for (i = 0; i < 16; ++i)
-    ;
+    ; // expected-error {{expected 4 for loops after '#pragma omp for', but found only 1}}
 #pragma omp parallel
 #pragma omp for collapse(4)
   for (int i1 = 0; i1 < 16; ++i1)
@@ -160,10 +161,10 @@ void test_collapse() {
           foo();
 #pragma omp parallel
 // expected-error@+2 {{expected ')'}}
-// expected-note@+1 {{to match this '('}}
+// expected-note@+1 {{to match this '('}} expected-note@+1 {{as specified in 'collapse' clause}}
 #pragma omp for collapse(4, 8)
   for (i = 0; i < 16; ++i)
-    ;
+    ; // expected-error {{expected 4 for loops after '#pragma omp for', but found only 1}}
 #pragma omp parallel
 // expected-error@+1 {{expression is not an integer constant expression}}
 #pragma omp for collapse(2.5)
@@ -189,6 +190,16 @@ void test_collapse() {
 #pragma omp for collapse(5 - 5)
   for (i = 0; i < 16; ++i)
     ;
+#pragma omp parallel
+#pragma omp for collapse(2)
+  for (i = 0; i < 16; ++i)
+// expected-note@+1 {{variable with automatic storage duration is predetermined as private; perhaps you forget to enclose 'omp for' directive into a parallel or another task region?}}
+    for (int j = 0; j < 16; ++j)
+// expected-error@+2 {{private variable cannot be reduction}}
+// expected-error@+1 {{region cannot be closely nested inside 'for' region; perhaps you forget to enclose 'omp for' directive into a parallel region?}}
+#pragma omp for reduction(+ : i, j)
+      for (int k = 0; k < 16; ++k)
+        i += j;
 }
 
 void test_private() {

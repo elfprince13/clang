@@ -23,6 +23,8 @@ namespace clang {
 enum OpenMPDirectiveKind {
 #define OPENMP_DIRECTIVE(Name) \
   OMPD_##Name,
+#define OPENMP_DIRECTIVE_EXT(Name, Str) \
+  OMPD_##Name,
 #include "clang/Basic/OpenMPKinds.def"
   OMPD_unknown
 };
@@ -50,6 +52,14 @@ enum OpenMPProcBindClauseKind {
   OMPC_PROC_BIND_##Name,
 #include "clang/Basic/OpenMPKinds.def"
   OMPC_PROC_BIND_unknown
+};
+
+/// \brief OpenMP attributes for 'schedule' clause.
+enum OpenMPScheduleClauseKind {
+#define OPENMP_SCHEDULE_KIND(Name) \
+  OMPC_SCHEDULE_##Name,
+#include "clang/Basic/OpenMPKinds.def"
+  OMPC_SCHEDULE_unknown
 };
 
 OpenMPDirectiveKind getOpenMPDirectiveKind(llvm::StringRef Str);

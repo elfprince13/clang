@@ -163,6 +163,8 @@ class Parser : public CodeCompletionHandler {
   std::unique_ptr<PragmaHandler> MSSection;
   std::unique_ptr<PragmaHandler> OptimizeHandler;
   std::unique_ptr<PragmaHandler> LoopHintHandler;
+  std::unique_ptr<PragmaHandler> UnrollHintHandler;
+  std::unique_ptr<PragmaHandler> NoUnrollHintHandler;
 
   std::unique_ptr<CommentHandler> CommentSemaHandler;
 
@@ -264,7 +266,7 @@ public:
   typedef clang::TypeResult        TypeResult;
 
   typedef Expr *ExprArg;
-  typedef llvm::MutableArrayRef<Stmt*> MultiStmtArg;
+  typedef MutableArrayRef<Stmt*> MultiStmtArg;
   typedef Sema::FullExprArg FullExprArg;
 
   ExprResult ExprError() { return ExprResult(true); }
@@ -486,12 +488,12 @@ private:
   void HandlePragmaMSVtorDisp();
 
   void HandlePragmaMSPragma();
-  unsigned HandlePragmaMSSection(llvm::StringRef PragmaName,
-                                 SourceLocation PragmaLocation);
-  unsigned HandlePragmaMSSegment(llvm::StringRef PragmaName,
-                                 SourceLocation PragmaLocation);
-  unsigned HandlePragmaMSInitSeg(llvm::StringRef PragmaName,
-                                 SourceLocation PragmaLocation);
+  bool HandlePragmaMSSection(StringRef PragmaName,
+                             SourceLocation PragmaLocation);
+  bool HandlePragmaMSSegment(StringRef PragmaName,
+                             SourceLocation PragmaLocation);
+  bool HandlePragmaMSInitSeg(StringRef PragmaName,
+                             SourceLocation PragmaLocation);
 
   /// \brief Handle the annotation token produced for
   /// #pragma align...
@@ -522,8 +524,8 @@ private:
   StmtResult HandlePragmaCaptured();
 
   /// \brief Handle the annotation token produced for
-  /// #pragma vectorize...
-  LoopHint HandlePragmaLoopHint();
+  /// #pragma clang loop and #pragma unroll.
+  bool HandlePragmaLoopHint(LoopHint &Hint);
 
   /// GetLookAheadToken - This peeks ahead N tokens and returns that token
   /// without consuming any tokens.  LookAhead(0) returns 'Tok', LookAhead(1)
@@ -724,7 +726,7 @@ private:
   /// returned.
   bool ExpectAndConsume(tok::TokenKind ExpectedTok,
                         unsigned Diag = diag::err_expected,
-                        const char *DiagMsg = "");
+                        StringRef DiagMsg = "");
 
   /// \brief The parser expects a semicolon and, if present, will consume it.
   ///
@@ -1675,6 +1677,7 @@ private:
   StmtResult ParseSEHTryBlockCommon(SourceLocation Loc);
   StmtResult ParseSEHExceptBlock(SourceLocation Loc);
   StmtResult ParseSEHFinallyBlock(SourceLocation Loc);
+  StmtResult ParseSEHLeaveStatement();
 
   //===--------------------------------------------------------------------===//
   // Objective-C Statements
@@ -2122,22 +2125,34 @@ private:
   void ParseAvailabilityAttribute(IdentifierInfo &Availability,
                                   SourceLocation AvailabilityLoc,
                                   ParsedAttributes &attrs,
-                                  SourceLocation *endLoc);
-  
+                                  SourceLocation *endLoc,
+                                  IdentifierInfo *ScopeName,
+                                  SourceLocation ScopeLoc,
+                                  AttributeList::Syntax Syntax);
+
   void ParseObjCBridgeRelatedAttribute(IdentifierInfo &ObjCBridgeRelated,
                                        SourceLocation ObjCBridgeRelatedLoc,
                                        ParsedAttributes &attrs,
-                                       SourceLocation *endLoc);
+                                       SourceLocation *endLoc,
+                                       IdentifierInfo *ScopeName,
+                                       SourceLocation ScopeLoc,
+                                       AttributeList::Syntax Syntax);
 
   void ParseTypeTagForDatatypeAttribute(IdentifierInfo &AttrName,
                                         SourceLocation AttrNameLoc,
                                         ParsedAttributes &Attrs,
-                                        SourceLocation *EndLoc);
+                                        SourceLocation *EndLoc,
+                                        IdentifierInfo *ScopeName,
+                                        SourceLocation ScopeLoc,
+                                        AttributeList::Syntax Syntax);
 
   void ParseAttributeWithTypeArg(IdentifierInfo &AttrName,
                                  SourceLocation AttrNameLoc,
                                  ParsedAttributes &Attrs,
-                                 SourceLocation *EndLoc);
+                                 SourceLocation *EndLoc,
+                                 IdentifierInfo *ScopeName,
+                                 SourceLocation ScopeLoc,
+                                 AttributeList::Syntax Syntax);
 
   void ParseTypeofSpecifier(DeclSpec &DS);
   SourceLocation ParseDecltypeSpecifier(DeclSpec &DS);
@@ -2156,7 +2171,8 @@ private:
   VirtSpecifiers::Specifier isCXX11VirtSpecifier() const {
     return isCXX11VirtSpecifier(Tok);
   }
-  void ParseOptionalCXX11VirtSpecifierSeq(VirtSpecifiers &VS, bool IsInterface);
+  void ParseOptionalCXX11VirtSpecifierSeq(VirtSpecifiers &VS, bool IsInterface,
+                                          SourceLocation FriendLoc);
 
   bool isCXX11FinalKeyword() const;
 
@@ -2200,8 +2216,21 @@ private:
   void ParseDeclaratorInternal(Declarator &D,
                                DirectDeclParseFunction DirectDeclParser);
 
-  void ParseTypeQualifierListOpt(DeclSpec &DS, bool GNUAttributesAllowed = true,
-                                 bool CXX11AttributesAllowed = true,
+  enum AttrRequirements {
+    AR_NoAttributesParsed = 0, ///< No attributes are diagnosed.
+    AR_GNUAttributesParsedAndRejected = 1 << 0, ///< Diagnose GNU attributes.
+    AR_GNUAttributesParsed = 1 << 1,
+    AR_CXX11AttributesParsed = 1 << 2,
+    AR_DeclspecAttributesParsed = 1 << 3,
+    AR_AllAttributesParsed = AR_GNUAttributesParsed |
+                             AR_CXX11AttributesParsed |
+                             AR_DeclspecAttributesParsed,
+    AR_VendorAttributesParsed = AR_GNUAttributesParsed |
+                                AR_DeclspecAttributesParsed
+  };
+
+  void ParseTypeQualifierListOpt(DeclSpec &DS,
+                                 unsigned AttrReqs = AR_AllAttributesParsed,
                                  bool AtomicAllowed = true,
                                  bool IdentifierRequired = false);
   void ParseDirectDeclarator(Declarator &D);
@@ -2221,6 +2250,7 @@ private:
          SmallVectorImpl<DeclaratorChunk::ParamInfo> &ParamInfo,
          SourceLocation &EllipsisLoc);
   void ParseBracketDeclarator(Declarator &D);
+  void ParseMisplacedBracketDeclarator(Declarator &D);
 
   //===--------------------------------------------------------------------===//
   // C++ 7: Declarations [dcl.dcl]
@@ -2332,7 +2362,12 @@ private:
                                 SmallVectorImpl<Expr *> &VarList,
                                 bool AllowScopeSpecifier);
   /// \brief Parses declarative or executable directive.
-  StmtResult ParseOpenMPDeclarativeOrExecutableDirective();
+  ///
+  /// \param StandAloneAllowed true if allowed stand-alone directives,
+  /// false - otherwise
+  ///
+  StmtResult
+  ParseOpenMPDeclarativeOrExecutableDirective(bool StandAloneAllowed);
   /// \brief Parses clause of kind \a CKind for directive of a kind \a Kind.
   ///
   /// \param DKind Kind of current directive.
@@ -2352,6 +2387,17 @@ private:
   /// \param Kind Kind of current clause.
   ///
   OMPClause *ParseOpenMPSimpleClause(OpenMPClauseKind Kind);
+  /// \brief Parses clause with a single expression and an additional argument
+  /// of a kind \a Kind.
+  ///
+  /// \param Kind Kind of current clause.
+  ///
+  OMPClause *ParseOpenMPSingleExprWithArgClause(OpenMPClauseKind Kind);
+  /// \brief Parses clause without any additional arguments.
+  ///
+  /// \param Kind Kind of current clause.
+  ///
+  OMPClause *ParseOpenMPClause(OpenMPClauseKind Kind);
   /// \brief Parses clause with the list of variables of a kind \a Kind.
   ///
   /// \param Kind Kind of current clause.

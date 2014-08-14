@@ -414,8 +414,8 @@ public:
     : IndexCtx(clientData, indexCallbacks, indexOptions, cxTU),
       CXTU(cxTU), SKData(skData) { }
 
-  ASTConsumer *CreateASTConsumer(CompilerInstance &CI,
-                                 StringRef InFile) override {
+  std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &CI,
+                                                 StringRef InFile) override {
     PreprocessorOptions &PPOpts = CI.getPreprocessorOpts();
 
     if (!PPOpts.ImplicitPCHInclude.empty()) {
@@ -429,13 +429,12 @@ public:
     IndexCtx.setPreprocessor(PP);
 
     if (SKData) {
-      PPConditionalDirectiveRecord *
-        PPRec = new PPConditionalDirectiveRecord(PP.getSourceManager());
+      auto *PPRec = new PPConditionalDirectiveRecord(PP.getSourceManager());
       PP.addPPCallbacks(PPRec);
-      SKCtrl.reset(new TUSkipBodyControl(*SKData, *PPRec, PP));
+      SKCtrl = llvm::make_unique<TUSkipBodyControl>(*SKData, *PPRec, PP);
     }
 
-    return new IndexingConsumer(IndexCtx, SKCtrl.get());
+    return llvm::make_unique<IndexingConsumer>(IndexCtx, SKCtrl.get());
   }
 
   void EndSourceFileAction() override {
@@ -472,28 +471,17 @@ struct IndexSourceFileInfo {
   const char *source_filename;
   const char *const *command_line_args;
   int num_command_line_args;
-  struct CXUnsavedFile *unsaved_files;
-  unsigned num_unsaved_files;
+  ArrayRef<CXUnsavedFile> unsaved_files;
   CXTranslationUnit *out_TU;
   unsigned TU_options;
-  int result;
-};
-
-struct MemBufferOwner {
-  SmallVector<const llvm::MemoryBuffer *, 8> Buffers;
-  
-  ~MemBufferOwner() {
-    for (SmallVectorImpl<const llvm::MemoryBuffer *>::iterator
-           I = Buffers.begin(), E = Buffers.end(); I != E; ++I)
-      delete *I;
-  }
+  CXErrorCode &result;
 };
 
 } // anonymous namespace
 
 static void clang_indexSourceFile_Impl(void *UserData) {
-  IndexSourceFileInfo *ITUI =
-    static_cast<IndexSourceFileInfo*>(UserData);
+  const IndexSourceFileInfo *ITUI =
+      static_cast<IndexSourceFileInfo *>(UserData);
   CXIndexAction cxIdxAction = ITUI->idxAction;
   CXClientData client_data = ITUI->client_data;
   IndexerCallbacks *client_index_callbacks = ITUI->index_callbacks;
@@ -502,13 +490,8 @@ static void clang_indexSourceFile_Impl(void *UserData) {
   const char *source_filename = ITUI->source_filename;
   const char * const *command_line_args = ITUI->command_line_args;
   int num_command_line_args = ITUI->num_command_line_args;
-  struct CXUnsavedFile *unsaved_files = ITUI->unsaved_files;
-  unsigned num_unsaved_files = ITUI->num_unsaved_files;
   CXTranslationUnit *out_TU  = ITUI->out_TU;
   unsigned TU_options = ITUI->TU_options;
-
-  // Set up the initial return value.
-  ITUI->result = CXError_Failure;
 
   if (out_TU)
     *out_TU = nullptr;
@@ -550,7 +533,7 @@ static void clang_indexSourceFile_Impl(void *UserData) {
   // Recover resources if we crash before exiting this function.
   llvm::CrashRecoveryContextCleanupRegistrar<DiagnosticsEngine,
     llvm::CrashRecoveryContextReleaseRefCleanup<DiagnosticsEngine> >
-    DiagCleanup(Diags.getPtr());
+    DiagCleanup(Diags.get());
 
   std::unique_ptr<std::vector<const char *>> Args(
       new std::vector<const char *>());
@@ -579,23 +562,23 @@ static void clang_indexSourceFile_Impl(void *UserData) {
   // Recover resources if we crash before exiting this function.
   llvm::CrashRecoveryContextCleanupRegistrar<CompilerInvocation,
     llvm::CrashRecoveryContextReleaseRefCleanup<CompilerInvocation> >
-    CInvokCleanup(CInvok.getPtr());
+    CInvokCleanup(CInvok.get());
 
   if (CInvok->getFrontendOpts().Inputs.empty())
     return;
 
-  std::unique_ptr<MemBufferOwner> BufOwner(new MemBufferOwner());
+  typedef SmallVector<std::unique_ptr<llvm::MemoryBuffer>, 8> MemBufferOwner;
+  std::unique_ptr<MemBufferOwner> BufOwner(new MemBufferOwner);
 
   // Recover resources if we crash before exiting this method.
-  llvm::CrashRecoveryContextCleanupRegistrar<MemBufferOwner>
-    BufOwnerCleanup(BufOwner.get());
+  llvm::CrashRecoveryContextCleanupRegistrar<MemBufferOwner> BufOwnerCleanup(
+      BufOwner.get());
 
-  for (unsigned I = 0; I != num_unsaved_files; ++I) {
-    StringRef Data(unsaved_files[I].Contents, unsaved_files[I].Length);
-    const llvm::MemoryBuffer *Buffer
-      = llvm::MemoryBuffer::getMemBufferCopy(Data, unsaved_files[I].Filename);
-    CInvok->getPreprocessorOpts().addRemappedFile(unsaved_files[I].Filename, Buffer);
-    BufOwner->Buffers.push_back(Buffer);
+  for (auto &UF : ITUI->unsaved_files) {
+    llvm::MemoryBuffer *MB =
+        llvm::MemoryBuffer::getMemBufferCopy(getContents(UF), UF.Filename);
+    BufOwner->push_back(std::unique_ptr<llvm::MemoryBuffer>(MB));
+    CInvok->getPreprocessorOpts().addRemappedFile(UF.Filename, MB);
   }
 
   // Since libclang is primarily used by batch tools dealing with
@@ -607,7 +590,7 @@ static void clang_indexSourceFile_Impl(void *UserData) {
   if (index_options & CXIndexOpt_SuppressWarnings)
     CInvok->getDiagnosticOpts().IgnoreWarnings = true;
 
-  ASTUnit *Unit = ASTUnit::create(CInvok.getPtr(), Diags,
+  ASTUnit *Unit = ASTUnit::create(CInvok.get(), Diags,
                                   CaptureDiagnostics,
                                   /*UserFilesAreVolatile=*/true);
   if (!Unit) {
@@ -661,7 +644,7 @@ static void clang_indexSourceFile_Impl(void *UserData) {
     PPOpts.DetailedRecord = false;
 
   DiagnosticErrorTrap DiagTrap(*Diags);
-  bool Success = ASTUnit::LoadFromCompilerInvocationAction(CInvok.getPtr(), Diags,
+  bool Success = ASTUnit::LoadFromCompilerInvocationAction(CInvok.get(), Diags,
                                                        IndexAction.get(),
                                                        Unit,
                                                        Persistent,
@@ -992,16 +975,27 @@ int clang_indexSourceFile(CXIndexAction idxAction,
       *Log << command_line_args[i] << " ";
   }
 
-  IndexSourceFileInfo ITUI = { idxAction, client_data, index_callbacks,
-                               index_callbacks_size, index_options,
-                               source_filename, command_line_args,
-                               num_command_line_args, unsaved_files,
-                               num_unsaved_files, out_TU, TU_options,
-                               CXError_Failure };
+  if (num_unsaved_files && !unsaved_files)
+    return CXError_InvalidArguments;
+
+  CXErrorCode result = CXError_Failure;
+  IndexSourceFileInfo ITUI = {
+      idxAction,
+      client_data,
+      index_callbacks,
+      index_callbacks_size,
+      index_options,
+      source_filename,
+      command_line_args,
+      num_command_line_args,
+      llvm::makeArrayRef(unsaved_files, num_unsaved_files),
+      out_TU,
+      TU_options,
+      result};
 
   if (getenv("LIBCLANG_NOTHREADS")) {
     clang_indexSourceFile_Impl(&ITUI);
-    return ITUI.result;
+    return result;
   }
 
   llvm::CrashRecoveryContext CRC;
@@ -1032,8 +1026,8 @@ int clang_indexSourceFile(CXIndexAction idxAction,
     if (out_TU)
       PrintLibclangResourceUsage(*out_TU);
   }
-  
-  return ITUI.result;
+
+  return result;
 }
 
 int clang_indexTranslationUnit(CXIndexAction idxAction,

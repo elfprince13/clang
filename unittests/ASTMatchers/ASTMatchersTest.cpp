@@ -643,6 +643,30 @@ TEST(DeclarationMatcher, HasDescendant) {
       "};", ZDescendantClassXDescendantClassY));
 }
 
+TEST(DeclarationMatcher, HasDescendantMemoization) {
+  DeclarationMatcher CannotMemoize =
+      decl(hasDescendant(typeLoc().bind("x")), has(decl()));
+  EXPECT_TRUE(matches("void f() { int i; }", CannotMemoize));
+}
+
+TEST(DeclarationMatcher, MatchCudaDecl) {
+  EXPECT_TRUE(matchesWithCuda("__global__ void f() { }"
+                              "void g() { f<<<1, 2>>>(); }",
+                              CUDAKernelCallExpr()));
+  EXPECT_TRUE(matchesWithCuda("__attribute__((device)) void f() {}",
+                              hasCudaDeviceAttr()));
+  EXPECT_TRUE(matchesWithCuda("__attribute__((host)) void f() {}",
+                              hasCudaHostAttr()));
+  EXPECT_TRUE(matchesWithCuda("__attribute__((global)) void f() {}",
+                              hasCudaGlobalAttr()));
+  EXPECT_FALSE(matchesWithCuda("void f() {}",
+                               hasCudaGlobalAttr()));
+  EXPECT_TRUE(notMatchesWithCuda("void f() {}",
+                                 hasCudaGlobalAttr()));
+  EXPECT_FALSE(notMatchesWithCuda("__attribute__((global)) void f() {}",
+                                  hasCudaGlobalAttr()));
+}
+
 // Implements a run method that returns whether BoundNodes contains a
 // Decl bound to Id that can be dynamically cast to T.
 // Optionally checks that the check succeeded a specific number of times.
@@ -1017,6 +1041,17 @@ TEST(Matcher, ForRange) {
                          forRangeStmt()));
 }
 
+TEST(Matcher, SubstNonTypeTemplateParm) {
+  EXPECT_FALSE(matches("template<int N>\n"
+                       "struct A {  static const int n = 0; };\n"
+                       "struct B : public A<42> {};",
+                       substNonTypeTemplateParmExpr()));
+  EXPECT_TRUE(matches("template<int N>\n"
+                      "struct A {  static const int n = N; };\n"
+                      "struct B : public A<42> {};",
+                      substNonTypeTemplateParmExpr()));
+}
+
 TEST(Matcher, UserDefinedLiteral) {
   EXPECT_TRUE(matches("constexpr char operator \"\" _inc (const char i) {"
                       "  return i + 1;"
@@ -1084,12 +1119,19 @@ TEST(Matcher, HasOperatorNameForOverloadedOperatorCall) {
               "bool operator&&(Y x, Y y) { return true; }; "
               "Y a; Y b; bool c = a && b;",
               OpCallLessLess));
+  StatementMatcher OpStarCall =
+      operatorCallExpr(hasOverloadedOperatorName("*"));
+  EXPECT_TRUE(matches("class Y; int operator*(Y &); void f(Y &y) { *y; }",
+              OpStarCall));
   DeclarationMatcher ClassWithOpStar =
     recordDecl(hasMethod(hasOverloadedOperatorName("*")));
   EXPECT_TRUE(matches("class Y { int operator*(); };",
                       ClassWithOpStar));
   EXPECT_TRUE(notMatches("class Y { void myOperator(); };",
               ClassWithOpStar)) ;
+  DeclarationMatcher AnyOpStar = functionDecl(hasOverloadedOperatorName("*"));
+  EXPECT_TRUE(matches("class Y; int operator*(Y &);", AnyOpStar));
+  EXPECT_TRUE(matches("class Y { int operator*(); };", AnyOpStar));
 }
 
 TEST(Matcher, NestedOverloadedOperatorCalls) {
@@ -3020,6 +3062,13 @@ TEST(UsingDeclaration, ThroughUsingDeclaration) {
       declRefExpr(throughUsingDecl(anything()))));
 }
 
+TEST(UsingDirectiveDeclaration, MatchesUsingNamespace) {
+  EXPECT_TRUE(matches("namespace X { int x; } using namespace X;",
+                      usingDirectiveDecl()));
+  EXPECT_FALSE(
+      matches("namespace X { int x; } using X::x;", usingDirectiveDecl()));
+}
+
 TEST(SingleDecl, IsSingleDecl) {
   StatementMatcher SingleDeclStmt =
       declStmt(hasSingleDecl(varDecl(hasInitializer(anything()))));
@@ -4138,8 +4187,8 @@ public:
 
   virtual bool run(const BoundNodes *Nodes, ASTContext *Context) {
     const T *Node = Nodes->getNodeAs<T>(Id);
-    return selectFirst<const T>(InnerId,
-                                match(InnerMatcher, *Node, *Context)) !=nullptr;
+    return selectFirst<T>(InnerId, match(InnerMatcher, *Node, *Context)) !=
+           nullptr;
   }
 private:
   std::string Id;
@@ -4196,7 +4245,7 @@ public:
     // Use the original typed pointer to verify we can pass pointers to subtypes
     // to equalsNode.
     const T *TypedNode = cast<T>(Node);
-    return selectFirst<const T>(
+    return selectFirst<T>(
                "", match(stmt(hasParent(
                              stmt(has(stmt(equalsNode(TypedNode)))).bind(""))),
                          *Node, Context)) != nullptr;
@@ -4205,7 +4254,7 @@ public:
     // Use the original typed pointer to verify we can pass pointers to subtypes
     // to equalsNode.
     const T *TypedNode = cast<T>(Node);
-    return selectFirst<const T>(
+    return selectFirst<T>(
                "", match(decl(hasParent(
                              decl(has(decl(equalsNode(TypedNode)))).bind(""))),
                          *Node, Context)) != nullptr;

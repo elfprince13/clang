@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_CLANG_REWRITER_TEST_CONTEXT_H
-#define LLVM_CLANG_REWRITER_TEST_CONTEXT_H
+#ifndef LLVM_CLANG_UNITTESTS_TOOLING_REWRITERTESTCONTEXT_H
+#define LLVM_CLANG_UNITTESTS_TOOLING_REWRITERTESTCONTEXT_H
 
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/DiagnosticOptions.h"
@@ -48,8 +48,7 @@ class RewriterTestContext {
   ~RewriterTestContext() {}
 
   FileID createInMemoryFile(StringRef Name, StringRef Content) {
-    const llvm::MemoryBuffer *Source =
-      llvm::MemoryBuffer::getMemBuffer(Content);
+    llvm::MemoryBuffer *Source = llvm::MemoryBuffer::getMemBuffer(Content);
     const FileEntry *Entry =
       Files.getVirtualFile(Name, Source->getBufferSize(), 0);
     Sources.overrideFileContents(Entry, Source);

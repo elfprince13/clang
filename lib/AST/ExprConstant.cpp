@@ -201,6 +201,7 @@ namespace {
 
     /// Determine whether this is a one-past-the-end pointer.
     bool isOnePastTheEnd() const {
+      assert(!Invalid);
       if (IsOnePastTheEnd)
         return true;
       if (MostDerivedArraySize &&
@@ -1269,10 +1270,28 @@ static bool CheckLValueConstantExpression(EvalInfo &Info, SourceLocation Loc,
           LVal.getLValueCallIndex() == 0) &&
          "have call index for global lvalue");
 
-  // Check if this is a thread-local variable.
   if (const ValueDecl *VD = Base.dyn_cast<const ValueDecl*>()) {
     if (const VarDecl *Var = dyn_cast<const VarDecl>(VD)) {
+      // Check if this is a thread-local variable.
       if (Var->getTLSKind())
+        return false;
+
+      // A dllimport variable never acts like a constant.
+      if (Var->hasAttr<DLLImportAttr>())
+        return false;
+    }
+    if (const auto *FD = dyn_cast<const FunctionDecl>(VD)) {
+      // __declspec(dllimport) must be handled very carefully:
+      // We must never initialize an expression with the thunk in C++.
+      // Doing otherwise would allow the same id-expression to yield
+      // different addresses for the same function in different translation
+      // units.  However, this means that we must dynamically initialize the
+      // expression with the contents of the import address table at runtime.
+      //
+      // The C language has no notion of ODR; furthermore, it has no notion of
+      // dynamic initialization.  This means that we are permitted to
+      // perform initialization with the address of the thunk.
+      if (Info.getLangOpts().CPlusPlus && FD->hasAttr<DLLImportAttr>())
         return false;
     }
   }
@@ -1290,7 +1309,7 @@ static bool CheckLValueConstantExpression(EvalInfo &Info, SourceLocation Loc,
   }
 
   // Does this refer one past the end of some object?
-  if (Designator.isOnePastTheEnd()) {
+  if (!Designator.Invalid && Designator.isOnePastTheEnd()) {
     const ValueDecl *VD = Base.dyn_cast<const ValueDecl*>();
     Info.Diag(Loc, diag::note_constexpr_past_end, 1)
       << !Designator.Entries.empty() << !!VD << VD;
@@ -1333,6 +1352,11 @@ static bool CheckConstantExpression(EvalInfo &Info, SourceLocation DiagLoc,
       << true << Type;
     return false;
   }
+
+  // We allow _Atomic(T) to be initialized from anything that T can be
+  // initialized from.
+  if (const AtomicType *AT = Type->getAs<AtomicType>())
+    Type = AT->getValueType();
 
   // Core issue 1454: For a literal constant expression of array or class type,
   // each subobject of its value shall have been initialized by a constant
@@ -4648,8 +4672,13 @@ public:
     // Can't look at 'this' when checking a potential constant expression.
     if (Info.checkingPotentialConstantExpression())
       return false;
-    if (!Info.CurrentCall->This)
-      return Error(E);
+    if (!Info.CurrentCall->This) {
+      if (Info.getLangOpts().CPlusPlus11)
+        Info.Diag(E, diag::note_constexpr_this) << E->isImplicit();
+      else
+        Info.Diag(E);
+      return false;
+    }
     Result = *Info.CurrentCall->This;
     return true;
   }
@@ -6030,7 +6059,8 @@ bool IntExprEvaluator::VisitCallExpr(const CallExpr *E) {
 
   case Builtin::BI__builtin_clz:
   case Builtin::BI__builtin_clzl:
-  case Builtin::BI__builtin_clzll: {
+  case Builtin::BI__builtin_clzll:
+  case Builtin::BI__builtin_clzs: {
     APSInt Val;
     if (!EvaluateInteger(E->getArg(0), Val, Info))
       return false;
@@ -6045,7 +6075,8 @@ bool IntExprEvaluator::VisitCallExpr(const CallExpr *E) {
 
   case Builtin::BI__builtin_ctz:
   case Builtin::BI__builtin_ctzl:
-  case Builtin::BI__builtin_ctzll: {
+  case Builtin::BI__builtin_ctzll:
+  case Builtin::BI__builtin_ctzs: {
     APSInt Val;
     if (!EvaluateInteger(E->getArg(0), Val, Info))
       return false;
@@ -7930,6 +7961,16 @@ public:
       return true;
     }
   }
+
+  bool VisitCallExpr(const CallExpr *E) {
+    switch (E->getBuiltinCallee()) {
+    default:
+      return ExprEvaluatorBaseTy::VisitCallExpr(E);
+    case Builtin::BI__assume:
+      // The argument is not evaluated!
+      return true;
+    }
+  }
 };
 } // end anonymous namespace
 
@@ -8704,7 +8745,7 @@ bool Expr::isCXX11ConstantExpr(const ASTContext &Ctx, APValue *Result,
 
 bool Expr::EvaluateWithSubstitution(APValue &Value, ASTContext &Ctx,
                                     const FunctionDecl *Callee,
-                                    llvm::ArrayRef<const Expr*> Args) const {
+                                    ArrayRef<const Expr*> Args) const {
   Expr::EvalStatus Status;
   EvalInfo Info(Ctx, Status, EvalInfo::EM_ConstantExpressionUnevaluated);
 

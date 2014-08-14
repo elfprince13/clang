@@ -7,12 +7,12 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This is the source level debug info generator for llvm translation.
+// This is the source-level debug info generator for llvm translation.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef CLANG_CODEGEN_CGDEBUGINFO_H
-#define CLANG_CODEGEN_CGDEBUGINFO_H
+#ifndef LLVM_CLANG_LIB_CODEGEN_CGDEBUGINFO_H
+#define LLVM_CLANG_LIB_CODEGEN_CGDEBUGINFO_H
 
 #include "CGBuilder.h"
 #include "clang/AST/Expr.h"
@@ -266,7 +266,7 @@ public:
   /// llvm.dbg.declare for the block-literal argument to a block
   /// invocation function.
   void EmitDeclareOfBlockLiteralArgVariable(const CGBlockInfo &block,
-                                            llvm::Value *Arg,
+                                            llvm::Value *Arg, unsigned ArgNo,
                                             llvm::Value *LocalAddr,
                                             CGBuilderTy &Builder);
 

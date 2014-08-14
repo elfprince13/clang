@@ -15,7 +15,7 @@
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
-#include "llvm/Transforms/Utils/SpecialCaseList.h"
+#include "llvm/Support/SpecialCaseList.h"
 #include <memory>
 
 using namespace clang::driver;
@@ -28,10 +28,7 @@ void SanitizerArgs::clear() {
   AsanZeroBaseShadow = false;
   UbsanTrapOnError = false;
   AsanSharedRuntime = false;
-}
-
-SanitizerArgs::SanitizerArgs() {
-  clear();
+  LinkCXXRuntimes = false;
 }
 
 SanitizerArgs::SanitizerArgs(const ToolChain &TC,
@@ -168,6 +165,10 @@ SanitizerArgs::SanitizerArgs(const ToolChain &TC,
     AsanZeroBaseShadow =
         (TC.getTriple().getEnvironment() == llvm::Triple::Android);
   }
+
+  // Parse -link-cxx-sanitizer flag.
+  LinkCXXRuntimes =
+      Args.hasArg(options::OPT_fsanitize_link_cxx_runtime) || D.CCCIsCXX();
 }
 
 void SanitizerArgs::addArgs(const llvm::opt::ArgList &Args,

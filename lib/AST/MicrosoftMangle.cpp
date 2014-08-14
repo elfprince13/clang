@@ -234,7 +234,7 @@ public:
                   QualifierMangleMode QMM = QMM_Mangle);
   void mangleFunctionType(const FunctionType *T,
                           const FunctionDecl *D = nullptr,
-                          bool ForceInstMethod = false);
+                          bool ForceThisQuals = false);
   void mangleNestedName(const NamedDecl *ND);
 
 private:
@@ -279,7 +279,8 @@ private:
 
   void mangleTemplateArgs(const TemplateDecl *TD,
                           const TemplateArgumentList &TemplateArgs);
-  void mangleTemplateArg(const TemplateDecl *TD, const TemplateArgument &TA);
+  void mangleTemplateArg(const TemplateDecl *TD, const TemplateArgument &TA,
+                         const NamedDecl *Parm);
 };
 }
 
@@ -418,11 +419,11 @@ void MicrosoftCXXNameMangler::mangleVariableEncoding(const VarDecl *VD) {
   //                 ::= <type> <pointee-cvr-qualifiers> # pointers, references
   // Pointers and references are odd. The type of 'int * const foo;' gets
   // mangled as 'QAHA' instead of 'PAHB', for example.
-  TypeLoc TL = VD->getTypeSourceInfo()->getTypeLoc();
+  SourceRange SR = VD->getSourceRange();
   QualType Ty = VD->getType();
   if (Ty->isPointerType() || Ty->isReferenceType() ||
       Ty->isMemberPointerType()) {
-    mangleType(Ty, TL.getSourceRange(), QMM_Drop);
+    mangleType(Ty, SR, QMM_Drop);
     manglePointerExtQualifiers(
         Ty.getDesugaredType(getASTContext()).getLocalQualifiers(), nullptr);
     if (const MemberPointerType *MPT = Ty->getAs<MemberPointerType>()) {
@@ -440,7 +441,7 @@ void MicrosoftCXXNameMangler::mangleVariableEncoding(const VarDecl *VD) {
     else
       mangleQualifiers(Ty.getQualifiers(), false);
   } else {
-    mangleType(Ty, TL.getSourceRange(), QMM_Drop);
+    mangleType(Ty, SR, QMM_Drop);
     mangleQualifiers(Ty.getLocalQualifiers(), false);
   }
 }
@@ -598,8 +599,8 @@ void MicrosoftCXXNameMangler::mangleNumber(int64_t Number) {
     // in the range of ASCII characters 'A' to 'P'.
     // The number 0x123450 would be encoded as 'BCDEFA'
     char EncodedNumberBuffer[sizeof(uint64_t) * 2];
-    llvm::MutableArrayRef<char> BufferRef(EncodedNumberBuffer);
-    llvm::MutableArrayRef<char>::reverse_iterator I = BufferRef.rbegin();
+    MutableArrayRef<char> BufferRef(EncodedNumberBuffer);
+    MutableArrayRef<char>::reverse_iterator I = BufferRef.rbegin();
     for (; Value != 0; Value >>= 4)
       *I++ = 'A' + (Value & 0xf);
     Out.write(I.base(), I - BufferRef.rbegin());
@@ -650,6 +651,7 @@ void MicrosoftCXXNameMangler::mangleUnqualifiedName(const NamedDecl *ND,
     // FIXME: Test alias template mangling with MSVC 2013.
     if (!isa<ClassTemplateDecl>(TD)) {
       mangleTemplateInstantiationName(TD, *TemplateArgs);
+      Out << '@';
       return;
     }
 
@@ -668,22 +670,13 @@ void MicrosoftCXXNameMangler::mangleUnqualifiedName(const NamedDecl *ND,
     // the mangled type name as a key to check the mangling of different types
     // for aliasing.
 
-    std::string TemplateMangling;
-    llvm::raw_string_ostream Stream(TemplateMangling);
+    llvm::SmallString<64> TemplateMangling;
+    llvm::raw_svector_ostream Stream(TemplateMangling);
     MicrosoftCXXNameMangler Extra(Context, Stream);
     Extra.mangleTemplateInstantiationName(TD, *TemplateArgs);
     Stream.flush();
 
-    BackRefMap::iterator Found = NameBackReferences.find(TemplateMangling);
-    if (Found == NameBackReferences.end()) {
-      Out << TemplateMangling;
-      if (NameBackReferences.size() < 10) {
-        size_t Size = NameBackReferences.size();
-        NameBackReferences[TemplateMangling] = Size;
-      }
-    } else {
-      Out << Found->second;
-    }
+    mangleSourceName(TemplateMangling);
     return;
   }
 
@@ -809,10 +802,7 @@ void MicrosoftCXXNameMangler::mangleUnqualifiedName(const NamedDecl *ND,
 void MicrosoftCXXNameMangler::mangleNestedName(const NamedDecl *ND) {
   // <postfix> ::= <unqualified-name> [<postfix>]
   //           ::= <substitution> [<postfix>]
-  if (isLambda(ND))
-    return;
-
-  const DeclContext *DC = ND->getDeclContext();
+  const DeclContext *DC = getEffectiveDeclContext(ND);
 
   while (!DC->isTranslationUnit()) {
     if (isa<TagDecl>(ND) || isa<VarDecl>(ND)) {
@@ -1002,13 +992,20 @@ void MicrosoftCXXNameMangler::mangleOperatorName(OverloadedOperatorKind OO,
 
 void MicrosoftCXXNameMangler::mangleSourceName(StringRef Name) {
   // <source name> ::= <identifier> @
-  BackRefMap::iterator Found = NameBackReferences.find(Name);
+  BackRefMap::iterator Found;
+  if (NameBackReferences.size() < 10) {
+    size_t Size = NameBackReferences.size();
+    bool Inserted;
+    std::tie(Found, Inserted) =
+        NameBackReferences.insert(std::make_pair(Name, Size));
+    if (Inserted)
+      Found = NameBackReferences.end();
+  } else {
+    Found = NameBackReferences.find(Name);
+  }
+
   if (Found == NameBackReferences.end()) {
     Out << Name << '@';
-    if (NameBackReferences.size() < 10) {
-      size_t Size = NameBackReferences.size();
-      NameBackReferences[Name] = Size;
-    }
   } else {
     Out << Found->second;
   }
@@ -1104,14 +1101,19 @@ void MicrosoftCXXNameMangler::mangleExpression(const Expr *E) {
 
 void MicrosoftCXXNameMangler::mangleTemplateArgs(
     const TemplateDecl *TD, const TemplateArgumentList &TemplateArgs) {
-  // <template-args> ::= <template-arg>+ @
+  // <template-args> ::= <template-arg>+
+  const TemplateParameterList *TPL = TD->getTemplateParameters();
+  assert(TPL->size() == TemplateArgs.size() &&
+         "size mismatch between args and parms!");
+
+  unsigned Idx = 0;
   for (const TemplateArgument &TA : TemplateArgs.asArray())
-    mangleTemplateArg(TD, TA);
-  Out << '@';
+    mangleTemplateArg(TD, TA, TPL->getParam(Idx++));
 }
 
 void MicrosoftCXXNameMangler::mangleTemplateArg(const TemplateDecl *TD,
-                                                const TemplateArgument &TA) {
+                                                const TemplateArgument &TA,
+                                                const NamedDecl *Parm) {
   // <template-arg> ::= <type>
   //                ::= <integer-literal>
   //                ::= <member-data-pointer>
@@ -1172,19 +1174,35 @@ void MicrosoftCXXNameMangler::mangleTemplateArg(const TemplateDecl *TD,
     mangleExpression(TA.getAsExpr());
     break;
   case TemplateArgument::Pack: {
-    llvm::ArrayRef<TemplateArgument> TemplateArgs = TA.getPackAsArray();
+    ArrayRef<TemplateArgument> TemplateArgs = TA.getPackAsArray();
     if (TemplateArgs.empty()) {
-      Out << "$S";
+      if (isa<TemplateTypeParmDecl>(Parm) ||
+          isa<TemplateTemplateParmDecl>(Parm))
+        Out << "$$V";
+      else if (isa<NonTypeTemplateParmDecl>(Parm))
+        Out << "$S";
+      else
+        llvm_unreachable("unexpected template parameter decl!");
     } else {
       for (const TemplateArgument &PA : TemplateArgs)
-        mangleTemplateArg(TD, PA);
+        mangleTemplateArg(TD, PA, Parm);
     }
     break;
   }
-  case TemplateArgument::Template:
-    mangleType(cast<TagDecl>(
-        TA.getAsTemplate().getAsTemplateDecl()->getTemplatedDecl()));
+  case TemplateArgument::Template: {
+    const NamedDecl *ND =
+        TA.getAsTemplate().getAsTemplateDecl()->getTemplatedDecl();
+    if (const auto *TD = dyn_cast<TagDecl>(ND)) {
+      mangleType(TD);
+    } else if (isa<TypeAliasDecl>(ND)) {
+      // FIXME: The mangling, while compatible with VS "14", is horribly
+      // broken.  Update this when they release their next compiler.
+      Out << '$';
+    } else {
+      llvm_unreachable("unexpected template template NamedDecl!");
+    }
     break;
+  }
   }
 }
 
@@ -1520,8 +1538,13 @@ void MicrosoftCXXNameMangler::mangleType(const FunctionProtoType *T,
   // Structors only appear in decls, so at this point we know it's not a
   // structor type.
   // FIXME: This may not be lambda-friendly.
-  Out << "$$A6";
-  mangleFunctionType(T);
+  if (T->getTypeQuals() || T->getRefQualifier() != RQ_None) {
+    Out << "$$A8@@";
+    mangleFunctionType(T, /*D=*/nullptr, /*ForceThisQuals=*/true);
+  } else {
+    Out << "$$A6";
+    mangleFunctionType(T);
+  }
 }
 void MicrosoftCXXNameMangler::mangleType(const FunctionNoProtoType *T,
                                          SourceRange) {
@@ -1530,7 +1553,7 @@ void MicrosoftCXXNameMangler::mangleType(const FunctionNoProtoType *T,
 
 void MicrosoftCXXNameMangler::mangleFunctionType(const FunctionType *T,
                                                  const FunctionDecl *D,
-                                                 bool ForceInstMethod) {
+                                                 bool ForceThisQuals) {
   // <function-type> ::= <this-cvr-qualifiers> <calling-convention>
   //                     <return-type> <argument-list> <throw-spec>
   const FunctionProtoType *Proto = cast<FunctionProtoType>(T);
@@ -1538,21 +1561,21 @@ void MicrosoftCXXNameMangler::mangleFunctionType(const FunctionType *T,
   SourceRange Range;
   if (D) Range = D->getSourceRange();
 
-  bool IsStructor = false, IsInstMethod = ForceInstMethod;
+  bool IsStructor = false, HasThisQuals = ForceThisQuals;
   if (const CXXMethodDecl *MD = dyn_cast_or_null<CXXMethodDecl>(D)) {
     if (MD->isInstance())
-      IsInstMethod = true;
+      HasThisQuals = true;
     if (isa<CXXConstructorDecl>(MD) || isa<CXXDestructorDecl>(MD))
       IsStructor = true;
   }
 
   // If this is a C++ instance method, mangle the CVR qualifiers for the
   // this pointer.
-  if (IsInstMethod) {
+  if (HasThisQuals) {
     Qualifiers Quals = Qualifiers::fromCVRMask(Proto->getTypeQuals());
-    manglePointerExtQualifiers(Quals, nullptr);
+    manglePointerExtQualifiers(Quals, /*PointeeType=*/nullptr);
     mangleRefQualifier(Proto->getRefQualifier());
-    mangleQualifiers(Quals, false);
+    mangleQualifiers(Quals, /*IsMember=*/false);
   }
 
   mangleCallingConvention(T);
