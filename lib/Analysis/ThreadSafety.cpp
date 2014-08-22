@@ -1337,10 +1337,10 @@ void BuildLockset::checkAccess(const Expr *Exp, AccessKind AK) {
   if (Analyzer->Handler.issueBetaWarnings()) {
     // Local variables of reference type cannot be re-assigned;
     // map them to their initializer.
-    while (auto *DRE = dyn_cast<DeclRefExpr>(Exp)) {
-      auto *VD = dyn_cast<VarDecl>(DRE->getDecl()->getCanonicalDecl());
+    while (const auto *DRE = dyn_cast<DeclRefExpr>(Exp)) {
+      const auto *VD = dyn_cast<VarDecl>(DRE->getDecl()->getCanonicalDecl());
       if (VD && VD->isLocalVarDecl() && VD->getType()->isReferenceType()) {
-        if (auto *E = VD->getInit()) {
+        if (const auto *E = VD->getInit()) {
           Exp = E;
           continue;
         }
@@ -1810,6 +1810,7 @@ void ThreadSafetyAnalyzer::runAnalysis(AnalysisDeclContext &AC) {
 
   CFG *CFGraph = walker.getGraph();
   const NamedDecl *D = walker.getDecl();
+  const FunctionDecl *CurrentFunction = dyn_cast<FunctionDecl>(D);
   CurrentMethod = dyn_cast<CXXMethodDecl>(D);
 
   if (D->hasAttr<NoThreadSafetyAnalysisAttr>())
@@ -1823,6 +1824,8 @@ void ThreadSafetyAnalyzer::runAnalysis(AnalysisDeclContext &AC) {
     return;  // Don't check inside constructors.
   if (isa<CXXDestructorDecl>(D))
     return;  // Don't check inside destructors.
+
+  Handler.enterFunction(CurrentFunction);
 
   BlockInfo.resize(CFGraph->getNumBlockIDs(),
     CFGBlockInfo::getEmptyBlockInfo(LocalVarMap));
@@ -2079,6 +2082,8 @@ void ThreadSafetyAnalyzer::runAnalysis(AnalysisDeclContext &AC) {
                    LEK_LockedAtEndOfFunction,
                    LEK_NotLockedAtEndOfFunction,
                    false);
+
+  Handler.leaveFunction(CurrentFunction);
 }
 
 

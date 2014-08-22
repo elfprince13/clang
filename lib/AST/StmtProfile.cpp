@@ -382,16 +382,20 @@ StmtProfiler::VisitOMPExecutableDirective(const OMPExecutableDirective *S) {
       P.Visit(*I);
 }
 
+void StmtProfiler::VisitOMPLoopDirective(const OMPLoopDirective *S) {
+  VisitOMPExecutableDirective(S);
+}
+
 void StmtProfiler::VisitOMPParallelDirective(const OMPParallelDirective *S) {
   VisitOMPExecutableDirective(S);
 }
 
 void StmtProfiler::VisitOMPSimdDirective(const OMPSimdDirective *S) {
-  VisitOMPExecutableDirective(S);
+  VisitOMPLoopDirective(S);
 }
 
 void StmtProfiler::VisitOMPForDirective(const OMPForDirective *S) {
-  VisitOMPExecutableDirective(S);
+  VisitOMPLoopDirective(S);
 }
 
 void StmtProfiler::VisitOMPSectionsDirective(const OMPSectionsDirective *S) {
@@ -417,7 +421,7 @@ void StmtProfiler::VisitOMPCriticalDirective(const OMPCriticalDirective *S) {
 
 void
 StmtProfiler::VisitOMPParallelForDirective(const OMPParallelForDirective *S) {
-  VisitOMPExecutableDirective(S);
+  VisitOMPLoopDirective(S);
 }
 
 void StmtProfiler::VisitOMPParallelSectionsDirective(

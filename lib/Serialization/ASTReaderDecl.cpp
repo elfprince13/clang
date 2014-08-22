@@ -2019,6 +2019,8 @@ void ASTDeclReader::mergeRedeclarable(Redeclarable<T> *DBase,
   T *D = static_cast<T*>(DBase);
   T *DCanon = D->getCanonicalDecl();
   if (D != DCanon &&
+      // IDs < NUM_PREDEF_DECL_IDS are not loaded from an AST file.
+      Redecl.getFirstID() >= NUM_PREDEF_DECL_IDS &&
       (!Reader.getContext().getLangOpts().Modules ||
        Reader.getOwningModuleFile(DCanon) == Reader.getOwningModuleFile(D))) {
     // All redeclarations between this declaration and its originally-canonical
@@ -2965,13 +2967,13 @@ namespace {
   class RedeclChainVisitor {
     ASTReader &Reader;
     SmallVectorImpl<DeclID> &SearchDecls;
-    llvm::SmallPtrSet<Decl *, 16> &Deserialized;
+    llvm::SmallPtrSetImpl<Decl *> &Deserialized;
     GlobalDeclID CanonID;
     SmallVector<Decl *, 4> Chain;
     
   public:
     RedeclChainVisitor(ASTReader &Reader, SmallVectorImpl<DeclID> &SearchDecls,
-                       llvm::SmallPtrSet<Decl *, 16> &Deserialized,
+                       llvm::SmallPtrSetImpl<Decl *> &Deserialized,
                        GlobalDeclID CanonID)
       : Reader(Reader), SearchDecls(SearchDecls), Deserialized(Deserialized),
         CanonID(CanonID) { 
@@ -3090,7 +3092,7 @@ namespace {
     ASTReader &Reader;
     serialization::GlobalDeclID InterfaceID;
     ObjCInterfaceDecl *Interface;
-    llvm::SmallPtrSet<ObjCCategoryDecl *, 16> &Deserialized;
+    llvm::SmallPtrSetImpl<ObjCCategoryDecl *> &Deserialized;
     unsigned PreviousGeneration;
     ObjCCategoryDecl *Tail;
     llvm::DenseMap<DeclarationName, ObjCCategoryDecl *> NameCategoryMap;
@@ -3138,7 +3140,7 @@ namespace {
     ObjCCategoriesVisitor(ASTReader &Reader,
                           serialization::GlobalDeclID InterfaceID,
                           ObjCInterfaceDecl *Interface,
-                        llvm::SmallPtrSet<ObjCCategoryDecl *, 16> &Deserialized,
+                        llvm::SmallPtrSetImpl<ObjCCategoryDecl *> &Deserialized,
                           unsigned PreviousGeneration)
       : Reader(Reader), InterfaceID(InterfaceID), Interface(Interface),
         Deserialized(Deserialized), PreviousGeneration(PreviousGeneration),

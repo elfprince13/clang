@@ -1155,7 +1155,7 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
   Opts.C11 = Std.isC11();
   Opts.CPlusPlus = Std.isCPlusPlus();
   Opts.CPlusPlus11 = Std.isCPlusPlus11();
-  Opts.CPlusPlus1y = Std.isCPlusPlus1y();
+  Opts.CPlusPlus14 = Std.isCPlusPlus14();
   Opts.CPlusPlus1z = Std.isCPlusPlus1z();
   Opts.Digraphs = Std.hasDigraphs();
   Opts.GNUMode = Std.isGNUMode();
@@ -1209,8 +1209,8 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
 
   Opts.DollarIdents = !Opts.AsmPreprocessor;
 
-  // C++1y onwards has sized global deallocation functions.
-  Opts.SizedDeallocation = Opts.CPlusPlus1y;
+  // C++14 onwards has sized global deallocation functions.
+  Opts.SizedDeallocation = Opts.CPlusPlus14;
 }
 
 /// Attempt to parse a visibility value out of the given argument.
@@ -2082,7 +2082,7 @@ createVFSFromCompilerInvocation(const CompilerInvocation &CI,
     }
 
     IntrusiveRefCntPtr<vfs::FileSystem> FS =
-        vfs::getVFSFromYAML(Buffer->release(), /*DiagHandler*/ nullptr);
+        vfs::getVFSFromYAML(std::move(Buffer.get()), /*DiagHandler*/ nullptr);
     if (!FS.get()) {
       Diags.Report(diag::err_invalid_vfs_overlay) << File;
       return IntrusiveRefCntPtr<vfs::FileSystem>();

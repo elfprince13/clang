@@ -1325,6 +1325,7 @@ bool Sema::CheckMessageArgumentTypes(QualType ReceiverType,
                                      ObjCMethodDecl *Method,
                                      bool isClassMessage, bool isSuperMessage,
                                      SourceLocation lbrac, SourceLocation rbrac,
+                                     SourceRange RecRange,
                                      QualType &ReturnType, ExprValueKind &VK) {
   SourceLocation SelLoc;
   if (!SelectorLocs.empty() && SelectorLocs.front().isValid())
@@ -1379,9 +1380,15 @@ bool Sema::CheckMessageArgumentTypes(QualType ReceiverType,
                                                 SelectorLocs.back());
       // Find the class to which we are sending this message.
       if (ReceiverType->isObjCObjectPointerType()) {
-        if (ObjCInterfaceDecl *Class =
-              ReceiverType->getAs<ObjCObjectPointerType>()->getInterfaceDecl())
-          Diag(Class->getLocation(), diag::note_receiver_class_declared);
+        if (ObjCInterfaceDecl *ThisClass =
+            ReceiverType->getAs<ObjCObjectPointerType>()->getInterfaceDecl()) {
+          Diag(ThisClass->getLocation(), diag::note_receiver_class_declared);
+          if (!RecRange.isInvalid())
+            if (ThisClass->lookupClassMethod(Sel))
+              Diag(RecRange.getBegin(),diag::note_receiver_expr_here)
+                << FixItHint::CreateReplacement(RecRange,
+                                                ThisClass->getNameAsString());
+        }
       }
     }
 
@@ -1708,11 +1715,15 @@ HandleExprPropertyRefExpr(const ObjCObjectPointerType *OPT,
   // name 'x'.
   if (Setter && Setter->isImplicit() && Setter->isPropertyAccessor()
       && !IFace->FindPropertyDeclaration(Member)) {
-      if (const ObjCPropertyDecl *PDecl = Setter->findPropertyDecl())
+      if (const ObjCPropertyDecl *PDecl = Setter->findPropertyDecl()) {
+        // Do not warn if user is using property-dot syntax to make call to
+        // user named setter.
+        if (!(PDecl->getPropertyAttributes() & ObjCPropertyDecl::OBJC_PR_setter))
           Diag(MemberLoc,
                diag::warn_property_access_suggest)
           << MemberName << QualType(OPT, 0) << PDecl->getName()
           << FixItHint::CreateReplacement(MemberLoc, PDecl->getName());
+      }
   }
 
   if (Getter || Setter) {
@@ -2210,7 +2221,8 @@ ExprResult Sema::BuildClassMessage(TypeSourceInfo *ReceiverTypeInfo,
   if (CheckMessageArgumentTypes(ReceiverType, MultiExprArg(Args, NumArgs),
                                 Sel, SelectorLocs,
                                 Method, true,
-                                SuperLoc.isValid(), LBracLoc, RBracLoc, 
+                                SuperLoc.isValid(), LBracLoc, RBracLoc,
+                                SourceRange(),
                                 ReturnType, VK))
     return ExprError();
 
@@ -2615,7 +2627,7 @@ ExprResult Sema::BuildInstanceMessage(Expr *Receiver,
   if (CheckMessageArgumentTypes(ReceiverType, MultiExprArg(Args, NumArgs),
                                 Sel, SelectorLocs, Method,
                                 ClassMessage, SuperLoc.isValid(), 
-                                LBracLoc, RBracLoc, ReturnType, VK))
+                                LBracLoc, RBracLoc, RecRange, ReturnType, VK))
     return ExprError();
 
   if (Method && !Method->getReturnType()->isVoidType() &&
