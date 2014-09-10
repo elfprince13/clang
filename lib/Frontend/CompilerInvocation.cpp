@@ -49,6 +49,7 @@ CompilerInvocationBase::CompilerInvocationBase()
   : LangOpts(new LangOptions()), TargetOpts(new TargetOptions()),
     DiagnosticOpts(new DiagnosticOptions()),
     HeaderSearchOpts(new HeaderSearchOptions()),
+	SkeletonSearchOpts(new SkeletonSearchOptions()),
     PreprocessorOpts(new PreprocessorOptions()) {}
 
 CompilerInvocationBase::CompilerInvocationBase(const CompilerInvocationBase &X)
@@ -57,7 +58,8 @@ CompilerInvocationBase::CompilerInvocationBase(const CompilerInvocationBase &X)
     TargetOpts(new TargetOptions(X.getTargetOpts())),
     DiagnosticOpts(new DiagnosticOptions(X.getDiagnosticOpts())),
     HeaderSearchOpts(new HeaderSearchOptions(X.getHeaderSearchOpts())),
-    PreprocessorOpts(new PreprocessorOptions(X.getPreprocessorOpts())) {}
+	SkeletonSearchOpts(new SkeletonSearchOptions(X.getSkeletonSearchOpts())),
+	PreprocessorOpts(new PreprocessorOptions(X.getPreprocessorOpts())) {}
 
 CompilerInvocationBase::~CompilerInvocationBase() {}
 
