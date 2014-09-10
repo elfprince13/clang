@@ -115,14 +115,17 @@ Parser::StmtResult Parser::ParseSkeleton(SourceLocation AtLoc){
 	return ret;
 }
 
-
+/*
 Parser::StmtResult doParseSkeletonWithName_Loop2dAccumulate(SourceLocation kindLoc){
 	return StmtResult();
 }
+//*/
 
 Parser::SkeletonHandler Parser::GetHandlerForSkeleton(IdentifierInfo &skelIdent){
+	/*
 	// Hard-code this as a test;
 	llvm::sys::DynamicLibrary::AddSymbol("doParseSkeletonWithName_Loop2dAccumulate", (void*)&doParseSkeletonWithName_Loop2dAccumulate);
+	//*/
 	
 	std::string symName("doParseSkeletonWithName_");
 	StringRef skelName = skelIdent.getName();
