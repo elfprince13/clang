@@ -47,20 +47,30 @@ namespace  {
       PrintStmt(S, Policy.Indentation);
     }
 
-    void PrintStmt(Stmt *S, int SubIndent) {
+    void PrintStmt(Stmt *S, int SubIndent, bool SuppressNewLine = false) {
       IndentLevel += SubIndent;
       if (S && isa<Expr>(S)) {
         // If this is an expr used in a stmt context, indent and newline it.
-        Indent();
-        Visit(S);
-        OS << ";\n";
+		  Indent();
+		Visit(S);
+		  OS << SExpCh("",";") << (SuppressNewLine ? "" : "\n");
       } else if (S) {
-        Visit(S);
+		  Visit(S); // We need some way of doing proper newline suppresion here!
       } else {
         Indent() << "<<<NULL STATEMENT>>>\n";
       }
       IndentLevel -= SubIndent;
     }
+	  
+	  inline bool SExp() { return Policy.UseSExp; }
+	  inline const char * SExpCh(const char * Parens, const char * NoParens){
+		  return SExp() ? Parens : NoParens;
+	  }
+	  inline const char * SExpL(const char * alt = ""){ return SExpCh("(",alt); }
+	  inline const char * SExpR(const char * alt = ""){ return SExpCh(")",alt); }
+	  
+	 void JumpStmtHelper(const char** OutTexts, int TextCount, Expr* OutExpr) ;
+	  void AsmIOHelper(GCCAsmStmt *Node, unsigned int (GCCAsmStmt::*NumIO)() const, StringRef (GCCAsmStmt::*IthName)(unsigned int) const, StringLiteral * (GCCAsmStmt::*IthConstraintLiteral)(unsigned int), Expr* (GCCAsmStmt::*IthExpr)(unsigned int));
 
     void PrintRawCompoundStmt(CompoundStmt *S);
     void PrintRawDecl(Decl *D);
@@ -113,11 +123,11 @@ namespace  {
 /// PrintRawCompoundStmt - Print a compound stmt without indenting the {, and
 /// with no newline after the }.
 void StmtPrinter::PrintRawCompoundStmt(CompoundStmt *Node) {
-  OS << "{\n";
+  OS << SExpL() << SExpCh("begin","{") << "\n";
   for (auto *I : Node->body())
     PrintStmt(I);
 
-  Indent() << "}";
+  Indent() << SExpCh("","}") << SExpR();
 }
 
 void StmtPrinter::PrintRawDecl(Decl *D) {
@@ -130,13 +140,13 @@ void StmtPrinter::PrintRawDeclStmt(const DeclStmt *S) {
 }
 
 void StmtPrinter::VisitNullStmt(NullStmt *Node) {
-  Indent() << ";\n";
+  Indent() << SExpL() << ";" << SExpR() << SExpCh("","\n");
 }
 
 void StmtPrinter::VisitDeclStmt(DeclStmt *Node) {
   Indent();
   PrintRawDeclStmt(Node);
-  OS << ";\n";
+  OS << SExpCh("",";") << "\n";
 }
 
 void StmtPrinter::VisitCompoundStmt(CompoundStmt *Node) {
@@ -146,47 +156,57 @@ void StmtPrinter::VisitCompoundStmt(CompoundStmt *Node) {
 }
 
 void StmtPrinter::VisitCaseStmt(CaseStmt *Node) {
-  Indent(-1) << "case ";
+  Indent(-1) << SExpL() << "case ";
+	OS << SExpL();
   PrintExpr(Node->getLHS());
   if (Node->getRHS()) {
     OS << " ... ";
     PrintExpr(Node->getRHS());
   }
-  OS << ":\n";
+  OS << SExpR(":") << "\n";
 
-  PrintStmt(Node->getSubStmt(), 0);
+  PrintStmt(Node->getSubStmt(), 0, SExp());
+
+	OS << SExpR() << SExpCh("\n","");
 }
 
 void StmtPrinter::VisitDefaultStmt(DefaultStmt *Node) {
-  Indent(-1) << "default:\n";
-  PrintStmt(Node->getSubStmt(), 0);
+  Indent(-1) << SExpL() << "default" << SExpCh(" ",":") << "\n";
+  PrintStmt(Node->getSubStmt(), 0, SExp());
+	OS << SExpR() << SExpCh("\n","");
 }
 
 void StmtPrinter::VisitLabelStmt(LabelStmt *Node) {
-  Indent(-1) << Node->getName() << ":\n";
-  PrintStmt(Node->getSubStmt(), 0);
+	// This S-Expression representation of labels doesn't entirely make sense
+	// But it's closest to the C++ AST, so we should use it.
+  Indent(-1) << SExpL() << Node->getName() << SExpCh(" ","") << ":\n";
+  PrintStmt(Node->getSubStmt(), 0, SExp());
+	OS << SExpR() << SExpCh("\n","");
 }
 
 void StmtPrinter::VisitAttributedStmt(AttributedStmt *Node) {
+	Indent() << SExpL() << SExpCh(" '(","");
   for (const auto *Attr : Node->getAttrs()) {
     Attr->printPretty(OS, Policy);
   }
+	OS << SExpCh(")\n","");
 
-  PrintStmt(Node->getSubStmt(), 0);
+  PrintStmt(Node->getSubStmt(), 0, SExp());
+	OS << SExpR();
 }
 
 void StmtPrinter::PrintRawIfStmt(IfStmt *If) {
-  OS << "if (";
+  OS << SExpL() << "if " << SExpCh("","(");
   if (const DeclStmt *DS = If->getConditionVariableDeclStmt())
     PrintRawDeclStmt(DS);
   else
     PrintExpr(If->getCond());
-  OS << ')';
+  OS << SExpCh("",")");
 
   if (CompoundStmt *CS = dyn_cast<CompoundStmt>(If->getThen())) {
     OS << ' ';
     PrintRawCompoundStmt(CS);
-    OS << (If->getElse() ? ' ' : '\n');
+    OS << (If->getElse() ? " " : SExpCh("","\n"));
   } else {
     OS << '\n';
     PrintStmt(If->getThen());
@@ -199,29 +219,31 @@ void StmtPrinter::PrintRawIfStmt(IfStmt *If) {
     if (CompoundStmt *CS = dyn_cast<CompoundStmt>(Else)) {
       OS << ' ';
       PrintRawCompoundStmt(CS);
-      OS << '\n';
+		OS << SExpCh("","\n");
     } else if (IfStmt *ElseIf = dyn_cast<IfStmt>(Else)) {
       OS << ' ';
       PrintRawIfStmt(ElseIf);
     } else {
-      OS << '\n';
+      OS << SExpCh("","\n");
       PrintStmt(If->getElse());
     }
   }
+	OS << SExpR();
 }
 
 void StmtPrinter::VisitIfStmt(IfStmt *If) {
   Indent();
   PrintRawIfStmt(If);
+	OS << SExpCh("\n","");
 }
 
 void StmtPrinter::VisitSwitchStmt(SwitchStmt *Node) {
-  Indent() << "switch (";
+  Indent() << SExpL() << "switch " << SExpCh("","(");
   if (const DeclStmt *DS = Node->getConditionVariableDeclStmt())
     PrintRawDeclStmt(DS);
   else
     PrintExpr(Node->getCond());
-  OS << ")";
+  OS << SExpCh("",")");
 
   // Pretty print compoundstmt bodies (very common).
   if (CompoundStmt *CS = dyn_cast<CompoundStmt>(Node->getBody())) {
@@ -232,20 +254,22 @@ void StmtPrinter::VisitSwitchStmt(SwitchStmt *Node) {
     OS << "\n";
     PrintStmt(Node->getBody());
   }
+	OS << SExpCh(")\n","");
 }
 
 void StmtPrinter::VisitWhileStmt(WhileStmt *Node) {
-  Indent() << "while (";
+  Indent() << SExpL() << "while " << SExpCh("","(");
   if (const DeclStmt *DS = Node->getConditionVariableDeclStmt())
     PrintRawDeclStmt(DS);
   else
     PrintExpr(Node->getCond());
-  OS << ")\n";
+  OS << SExpCh("",")") << "\n";
   PrintStmt(Node->getBody());
+	OS << SExpCh(")\n","");
 }
 
 void StmtPrinter::VisitDoStmt(DoStmt *Node) {
-  Indent() << "do ";
+  Indent() << SExpL() << SExpCh("do-while","do") << " ";
   if (CompoundStmt *CS = dyn_cast<CompoundStmt>(Node->getBody())) {
     PrintRawCompoundStmt(CS);
     OS << " ";
@@ -255,129 +279,204 @@ void StmtPrinter::VisitDoStmt(DoStmt *Node) {
     Indent();
   }
 
-  OS << "while (";
+  OS << SExpCh("","while") << " " << SExpCh("","(");
   PrintExpr(Node->getCond());
-  OS << ");\n";
+  OS << ")" << SExpCh("", ";") << "\n";
 }
 
 void StmtPrinter::VisitSkeletonStmt(SkeletonStmt *Node) {
-		Indent() << "@";
-	OS << "Blahblahblah;\n";
+		Indent() << SExpL() << "@" << SExpCh(" ","");
+	OS << Node->getKind()->getName() << SExpCh(" ","");
+	OS << SExpL();
+ if (Node->getName() != nullptr){
+	 OS << SExpCh("","(") << Node->getName()->getName() << SExpCh("",")");
+ }
+	OS << SExpR();
+	OS << SExpCh(" ","") << SExpL() << "\n";
+	for(auto *I : Node->parameters()){
+		Indent(2) << "[";
+		PrintExpr(static_cast<Expr*>(I));
+		OS << "]\n";
+	}
+	if(SExp()){
+		Indent(1) << ")\n";
+	}
+	PrintStmt(Node->getBody());
+	OS << SExpR() << "\n";
 }
 
 void StmtPrinter::VisitForStmt(ForStmt *Node) {
-  Indent() << "for (";
+  Indent() << SExpL() << "for " << SExpCh("","(");
   if (Node->getInit()) {
     if (DeclStmt *DS = dyn_cast<DeclStmt>(Node->getInit()))
       PrintRawDeclStmt(DS);
     else
       PrintExpr(cast<Expr>(Node->getInit()));
+  } else {
+	  OS << SExpCh("()","");
   }
-  OS << ";";
+	
+  OS << SExpCh("",";");
   if (Node->getCond()) {
     OS << " ";
     PrintExpr(Node->getCond());
+  } else {
+	  OS << SExpCh(" ()","");
   }
-  OS << ";";
+	
+  OS << SExpCh("",";");
   if (Node->getInc()) {
     OS << " ";
     PrintExpr(Node->getInc());
+  } else {
+	  OS << SExpCh(" ()","");
   }
-  OS << ") ";
+	
+  OS << SExpCh("",")") << " ";
 
   if (CompoundStmt *CS = dyn_cast<CompoundStmt>(Node->getBody())) {
     PrintRawCompoundStmt(CS);
-    OS << "\n";
+    OS << SExpCh("","\n");
   } else {
     OS << "\n";
     PrintStmt(Node->getBody());
   }
+	OS << SExpR() << SExpCh("\n","");
 }
 
 void StmtPrinter::VisitObjCForCollectionStmt(ObjCForCollectionStmt *Node) {
-  Indent() << "for (";
+  Indent() << SExpL() << "for (" << SExpCh("in ","");
   if (DeclStmt *DS = dyn_cast<DeclStmt>(Node->getElement()))
     PrintRawDeclStmt(DS);
   else
     PrintExpr(cast<Expr>(Node->getElement()));
-  OS << " in ";
+  OS << SExpCh(" "," in ");
   PrintExpr(Node->getCollection());
   OS << ") ";
 
   if (CompoundStmt *CS = dyn_cast<CompoundStmt>(Node->getBody())) {
     PrintRawCompoundStmt(CS);
-    OS << "\n";
+    OS << SExpCh("","\n");
   } else {
     OS << "\n";
     PrintStmt(Node->getBody());
   }
+	OS << SExpR() << SExpCh("\n","");
 }
 
 void StmtPrinter::VisitCXXForRangeStmt(CXXForRangeStmt *Node) {
-  Indent() << "for (";
+  Indent() << SExpL() << "for (" << SExpCh(": ", "");
   PrintingPolicy SubPolicy(Policy);
   SubPolicy.SuppressInitializers = true;
   Node->getLoopVariable()->print(OS, SubPolicy, IndentLevel);
-  OS << " : ";
+  OS << SExpCh(" "," : ");
   PrintExpr(Node->getRangeInit());
-  OS << ") {\n";
-  PrintStmt(Node->getBody());
-  Indent() << "}";
-  if (Policy.IncludeNewlines) OS << "\n";
+  OS << ") ";
+	if (CompoundStmt *CS = dyn_cast<CompoundStmt>(Node->getBody())) {
+		PrintRawCompoundStmt(CS);
+		OS << SExpCh("","\n");
+	} else {
+		OS << "\n";
+		PrintStmt(Node->getBody());
+	}
+	OS << SExpR() << SExpCh("\n","");
 }
 
 void StmtPrinter::VisitMSDependentExistsStmt(MSDependentExistsStmt *Node) {
   Indent();
-  if (Node->isIfExists())
-    OS << "__if_exists (";
-  else
-    OS << "__if_not_exists (";
-  
+	OS << SExpL();
+	if (Node->isIfExists()) {
+		OS << "__if_exists ";
+	} else {
+		OS << "__if_not_exists ";
+	}
+	OS << SExpCh("", "(");
+	
   if (NestedNameSpecifier *Qualifier
         = Node->getQualifierLoc().getNestedNameSpecifier())
     Qualifier->print(OS, Policy);
   
-  OS << Node->getNameInfo() << ") ";
+  OS << Node->getNameInfo() << SExpCh("",")") << " ";
   
   PrintRawCompoundStmt(Node->getSubStmt());
+	OS << SExpR();
+}
+
+void StmtPrinter::JumpStmtHelper(const char* OutTexts[], int TextCount, Expr* OutExpr) {
+	Indent() << SExpL();
+	for(int i = 0; i < TextCount; i++){
+		OS << OutTexts[i];
+	}
+	if(OutExpr != nullptr){
+		PrintExpr(OutExpr);
+	}
+	OS << SExpR(";");
+	if (Policy.IncludeNewlines) OS << SExpCh("", "\n");
 }
 
 void StmtPrinter::VisitGotoStmt(GotoStmt *Node) {
-  Indent() << "goto " << Node->getLabel()->getName() << ";";
-  if (Policy.IncludeNewlines) OS << "\n";
+	const char* Outs[2] = {"goto ",Node->getLabel()->getName().data()};
+	JumpStmtHelper(Outs,2,nullptr);
 }
 
 void StmtPrinter::VisitIndirectGotoStmt(IndirectGotoStmt *Node) {
-  Indent() << "goto *";
-  PrintExpr(Node->getTarget());
-  OS << ";";
-  if (Policy.IncludeNewlines) OS << "\n";
+	const char* Outs[2] = {"goto",SExpCh("* "," *")};
+	JumpStmtHelper(Outs, 2, Node->getTarget());
 }
 
 void StmtPrinter::VisitContinueStmt(ContinueStmt *Node) {
-  Indent() << "continue;";
-  if (Policy.IncludeNewlines) OS << "\n";
+		const char* Outs[1] = {"continue"};
+	JumpStmtHelper(Outs,1,nullptr);
 }
 
 void StmtPrinter::VisitBreakStmt(BreakStmt *Node) {
-  Indent() << "break;";
-  if (Policy.IncludeNewlines) OS << "\n";
+	const char* Outs[1] = {"break"};
+	JumpStmtHelper(Outs,1,nullptr);
 }
 
 
 void StmtPrinter::VisitReturnStmt(ReturnStmt *Node) {
-  Indent() << "return";
-  if (Node->getRetValue()) {
-    OS << " ";
-    PrintExpr(Node->getRetValue());
-  }
-  OS << ";";
-  if (Policy.IncludeNewlines) OS << "\n";
+	const char* Outs[2] = {"return"," "};
+	Expr* retVal = Node->getRetValue();
+	JumpStmtHelper(Outs,retVal == nullptr ? 1 : 2,retVal);
 }
 
+void StmtPrinter::AsmIOHelper(GCCAsmStmt *Node, unsigned int (GCCAsmStmt::*NumIO)() const, StringRef (GCCAsmStmt::*IthName)(unsigned int) const, StringLiteral * (GCCAsmStmt::*IthConstraintLiteral)(unsigned int), Expr* (GCCAsmStmt::*IthExpr)(unsigned int)){
+	
+	OS << SExpL();
+	for (unsigned i = 0, e = (Node->*NumIO)(); i != e; ++i) {
+		if (i != 0){
+			OS << SExpCh("",",") << " ";
+		}
+		
+		OS << SExpL();
+		
+		bool ININN = IthName != nullptr, ICLINN = IthConstraintLiteral != nullptr, IEINN = IthExpr != nullptr;
+		
+		if(ININN) {
+			StringRef name = (Node->*IthName)(i);
+			if (!name.empty()) {
+				OS << SExpCh("","[");
+				OS << name;
+				OS << SExpCh("","]") << ((ICLINN || IEINN) ? " " : "");
+			}
+		}
+		
+		if(ICLINN){
+			VisitStringLiteral((Node->*IthConstraintLiteral)(i));
+			OS << (IEINN ? " " : "");
+		}
+		
+		if(IEINN){
+			Visit((Node->*IthExpr)(i));
+		}
+		OS << SExpR();
+	}
+	OS << SExpR();
+}
 
 void StmtPrinter::VisitGCCAsmStmt(GCCAsmStmt *Node) {
-  Indent() << "asm ";
+  Indent() << SExpL() << "asm ";
 
   if (Node->isVolatile())
     OS << "volatile ";
@@ -388,65 +487,34 @@ void StmtPrinter::VisitGCCAsmStmt(GCCAsmStmt *Node) {
   // Outputs
   if (Node->getNumOutputs() != 0 || Node->getNumInputs() != 0 ||
       Node->getNumClobbers() != 0)
-    OS << " : ";
-
-  for (unsigned i = 0, e = Node->getNumOutputs(); i != e; ++i) {
-    if (i != 0)
-      OS << ", ";
-
-    if (!Node->getOutputName(i).empty()) {
-      OS << '[';
-      OS << Node->getOutputName(i);
-      OS << "] ";
-    }
-
-    VisitStringLiteral(Node->getOutputConstraintLiteral(i));
-    OS << " ";
-    Visit(Node->getOutputExpr(i));
-  }
+    OS << SExpCh(" "," : ");
+	
+	AsmIOHelper(Node, &GCCAsmStmt::getNumOutputs, &GCCAsmStmt::getOutputName, &GCCAsmStmt::getOutputConstraintLiteral, &GCCAsmStmt::getOutputExpr);
 
   // Inputs
   if (Node->getNumInputs() != 0 || Node->getNumClobbers() != 0)
-    OS << " : ";
-
-  for (unsigned i = 0, e = Node->getNumInputs(); i != e; ++i) {
-    if (i != 0)
-      OS << ", ";
-
-    if (!Node->getInputName(i).empty()) {
-      OS << '[';
-      OS << Node->getInputName(i);
-      OS << "] ";
-    }
-
-    VisitStringLiteral(Node->getInputConstraintLiteral(i));
-    OS << " ";
-    Visit(Node->getInputExpr(i));
-  }
-
+	  OS << SExpCh(" "," : ");
+	
+	AsmIOHelper(Node, &GCCAsmStmt::getNumInputs, &GCCAsmStmt::getInputName, &GCCAsmStmt::getInputConstraintLiteral, &GCCAsmStmt::getInputExpr);
   // Clobbers
   if (Node->getNumClobbers() != 0)
-    OS << " : ";
+    OS << SExpCh(" "," : ");
 
-  for (unsigned i = 0, e = Node->getNumClobbers(); i != e; ++i) {
-    if (i != 0)
-      OS << ", ";
-
-    VisitStringLiteral(Node->getClobberStringLiteral(i));
-  }
-
-  OS << ");";
+	AsmIOHelper(Node, &GCCAsmStmt::getNumClobbers, nullptr, &GCCAsmStmt::getClobberStringLiteral, nullptr);
+	
+  OS << ")" << SExpR(";");
   if (Policy.IncludeNewlines) OS << "\n";
 }
 
 void StmtPrinter::VisitMSAsmStmt(MSAsmStmt *Node) {
   // FIXME: Implement MS style inline asm statement printer.
-  Indent() << "__asm ";
+  Indent() << SExpL() << "__asm ";
   if (Node->hasBraces())
-    OS << "{\n";
+    OS << SExpCh("(begin\n","{\n");
   OS << Node->getAsmString() << "\n";
   if (Node->hasBraces())
-    Indent() << "}\n";
+    Indent() << SExpCh(")","}\n");
+	OS << SExpR();
 }
 
 void StmtPrinter::VisitCapturedStmt(CapturedStmt *Node) {
@@ -1128,13 +1196,16 @@ void StmtPrinter::VisitParenExpr(ParenExpr *Node) {
   OS << ")";
 }
 void StmtPrinter::VisitUnaryOperator(UnaryOperator *Node) {
+	OS << SExpCh("(UnOp ","");
   if (!Node->isPostfix()) {
     OS << UnaryOperator::getOpcodeStr(Node->getOpcode());
 
     // Print a space if this is an "identifier operator" like __real, or if
     // it might be concatenated incorrectly like '+'.
     switch (Node->getOpcode()) {
-    default: break;
+		default:
+			OS << SExpCh(" ", "");
+			break;
     case UO_Real:
     case UO_Imag:
     case UO_Extension:
@@ -1148,9 +1219,11 @@ void StmtPrinter::VisitUnaryOperator(UnaryOperator *Node) {
     }
   }
   PrintExpr(Node->getSubExpr());
-
-  if (Node->isPostfix())
-    OS << UnaryOperator::getOpcodeStr(Node->getOpcode());
+	if (Node->isPostfix()){
+		OS << SExpCh(" ", "");
+		OS << UnaryOperator::getOpcodeStr(Node->getOpcode());
+	}
+	OS << SExpR();
 }
 
 void StmtPrinter::VisitOffsetOfExpr(OffsetOfExpr *Node) {
@@ -1305,15 +1378,18 @@ void StmtPrinter::VisitImplicitCastExpr(ImplicitCastExpr *Node) {
   // No need to print anything, simply forward to the subexpression.
   PrintExpr(Node->getSubExpr());
 }
+
 void StmtPrinter::VisitBinaryOperator(BinaryOperator *Node) {
+	const char * opcode = BinaryOperator::getOpcodeStr(Node->getOpcode()).data();
+	OS << SExpL() << SExpCh(opcode,"") << SExpCh(" ","");
   PrintExpr(Node->getLHS());
-  OS << " " << BinaryOperator::getOpcodeStr(Node->getOpcode()) << " ";
+  OS << " ";
+	OS << SExpCh("",opcode) << SExpCh(""," ");
   PrintExpr(Node->getRHS());
+	OS << SExpR();
 }
 void StmtPrinter::VisitCompoundAssignOperator(CompoundAssignOperator *Node) {
-  PrintExpr(Node->getLHS());
-  OS << " " << BinaryOperator::getOpcodeStr(Node->getOpcode()) << " ";
-  PrintExpr(Node->getRHS());
+	VisitBinaryOperator(Node);
 }
 void StmtPrinter::VisitConditionalOperator(ConditionalOperator *Node) {
   PrintExpr(Node->getCond());

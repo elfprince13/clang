@@ -1178,6 +1178,9 @@ public:
 		IdentifierInfo* getKind(){ return kind; }
 		IdentifierInfo* getName(){ return name; }
 		
+		const IdentifierInfo* getKind() const { return kind; }
+		const IdentifierInfo* getName() const { return name; }
+		
 		int getNumParams(){ return body; }
 		IdentifierInfo * const* getParamNames() const { return ParamNames; }
 		

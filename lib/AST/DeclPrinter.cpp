@@ -92,8 +92,10 @@ namespace {
 }
 
 void Decl::print(raw_ostream &Out, unsigned Indentation,
-                 bool PrintInstantiation) const {
-  print(Out, getASTContext().getPrintingPolicy(), Indentation, PrintInstantiation);
+                 bool PrintInstantiation, bool UseSExp) const {
+	PrintingPolicy pp(getASTContext().getPrintingPolicy());
+	pp.UseSExp = UseSExp;
+	print(Out, pp, Indentation, PrintInstantiation);
 }
 
 void Decl::print(raw_ostream &Out, const PrintingPolicy &Policy,

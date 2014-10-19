@@ -62,6 +62,10 @@ static cl::opt<bool>
 ASTPrint("ast-print",
          cl::desc(Options->getOptionHelpText(options::OPT_ast_print)),
          cl::cat(ClangCheckCategory));
+static cl::opt<bool>
+ASTSExp("ast-sexp",
+		 cl::desc(Options->getOptionHelpText(options::OPT_ast_sexp)),
+		 cl::cat(ClangCheckCategory));
 static cl::opt<std::string> ASTDumpFilter(
     "ast-dump-filter",
     cl::desc(Options->getOptionHelpText(options::OPT_ast_dump_filter)),
@@ -188,6 +192,8 @@ public:
                                     /*DumpLookups*/ false);
     if (ASTPrint)
       return clang::CreateASTPrinter(&llvm::outs(), ASTDumpFilter);
+	  if(ASTSExp)
+		  return clang::CreateASTSExpPrinter(&llvm::outs(), ASTDumpFilter);
     return llvm::make_unique<clang::ASTConsumer>();
   }
 };

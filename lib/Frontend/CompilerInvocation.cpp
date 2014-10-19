@@ -725,6 +725,8 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
       Opts.ProgramAction = frontend::ASTDump; break;
     case OPT_ast_print:
       Opts.ProgramAction = frontend::ASTPrint; break;
+		case OPT_ast_sexp:
+			Opts.ProgramAction = frontend::ASTSExp; break;
     case OPT_ast_view:
       Opts.ProgramAction = frontend::ASTView; break;
     case OPT_dump_raw_tokens:

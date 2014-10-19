@@ -34,6 +34,10 @@ class TargetOptions;
 // implementation is still incomplete.
 std::unique_ptr<ASTConsumer> CreateASTPrinter(raw_ostream *OS,
                                               StringRef FilterString);
+	
+	// See above, but uses S-Expressions
+	std::unique_ptr<ASTConsumer> CreateASTSExpPrinter(raw_ostream *OS,
+												  StringRef FilterString);
 
 // AST dumper: dumps the raw AST in human-readable form to stderr; this is
 // intended for debugging.

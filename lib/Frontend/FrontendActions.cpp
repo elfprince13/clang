@@ -52,6 +52,14 @@ ASTPrintAction::CreateASTConsumer(CompilerInstance &CI, StringRef InFile) {
   return nullptr;
 }
 
+
+std::unique_ptr<ASTConsumer>
+ASTSExpAction::CreateASTConsumer(CompilerInstance &CI, StringRef InFile) {
+	if (raw_ostream *OS = CI.createDefaultOutputFile(false, InFile))
+		return CreateASTSExpPrinter(OS, CI.getFrontendOpts().ASTDumpFilter);
+	return nullptr;
+}
+
 std::unique_ptr<ASTConsumer>
 ASTDumpAction::CreateASTConsumer(CompilerInstance &CI, StringRef InFile) {
   return CreateASTDumper(CI.getFrontendOpts().ASTDumpFilter,

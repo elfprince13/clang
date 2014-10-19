@@ -37,9 +37,9 @@ namespace {
 
   public:
     ASTPrinter(raw_ostream *Out = nullptr, bool Dump = false,
-               StringRef FilterString = "", bool DumpLookups = false)
+               StringRef FilterString = "", bool DumpLookups = false, bool SExpFormat = false)
         : Out(Out ? *Out : llvm::outs()), Dump(Dump),
-          FilterString(FilterString), DumpLookups(DumpLookups) {}
+          FilterString(FilterString), DumpLookups(DumpLookups), SExpFormat(SExpFormat) {}
 
     void HandleTranslationUnit(ASTContext &Context) override {
       TranslationUnitDecl *D = Context.getTranslationUnitDecl();
@@ -91,13 +91,14 @@ namespace {
       } else if (Dump)
         D->dump(Out);
       else
-        D->print(Out, /*Indentation=*/0, /*PrintInstantiation=*/true);
+        D->print(Out, /*Indentation=*/0, /*PrintInstantiation=*/true, SExpFormat);
     }
 
     raw_ostream &Out;
     bool Dump;
     std::string FilterString;
     bool DumpLookups;
+						 bool SExpFormat;
   };
 
   class ASTDeclNodeLister : public ASTConsumer,
@@ -134,6 +135,12 @@ std::unique_ptr<ASTConsumer> clang::CreateASTDumper(StringRef FilterString,
   assert((DumpDecls || DumpLookups) && "nothing to dump");
   return llvm::make_unique<ASTPrinter>(nullptr, DumpDecls, FilterString,
                                        DumpLookups);
+}
+
+std::unique_ptr<ASTConsumer> clang::CreateASTSExpPrinter(raw_ostream *Out,
+														  StringRef FilterString) {
+	return llvm::make_unique<ASTPrinter>(Out, false, FilterString,
+										 false, true);
 }
 
 std::unique_ptr<ASTConsumer> clang::CreateASTDeclNodeLister() {

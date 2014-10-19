@@ -353,7 +353,9 @@ def print_preamble : Flag<["-"], "print-preamble">,
 def emit_html : Flag<["-"], "emit-html">,
   HelpText<"Output input source as HTML">;
 def ast_print : Flag<["-"], "ast-print">,
-  HelpText<"Build ASTs and then pretty-print them">;
+HelpText<"Build ASTs and then pretty-print them">;
+def ast_sexp : Flag<["-"], "ast-sexp">,
+HelpText<"Build ASTs and then print them as S-Expressions">;
 def ast_list : Flag<["-"], "ast-list">,
   HelpText<"Build ASTs and print the list of declaration node qualified names">;
 def ast_dump : Flag<["-"], "ast-dump">,

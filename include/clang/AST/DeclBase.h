@@ -952,7 +952,7 @@ public:
   static Decl *castFromDeclContext(const DeclContext *);
 
   void print(raw_ostream &Out, unsigned Indentation = 0,
-             bool PrintInstantiation = false) const;
+             bool PrintInstantiation = false, bool UseSExp = false) const;
   void print(raw_ostream &Out, const PrintingPolicy &Policy,
              unsigned Indentation = 0, bool PrintInstantiation = false) const;
   static void printGroup(Decl** Begin, unsigned NumDecls,

@@ -27,6 +27,7 @@ namespace frontend {
     ASTDeclList,            ///< Parse ASTs and list Decl nodes.
     ASTDump,                ///< Parse ASTs and dump them.
     ASTPrint,               ///< Parse ASTs and print them.
+	  ASTSExp,               ///< Parse ASTs and print them as S-Expressions.
     ASTView,                ///< Parse ASTs and view them in Graphviz.
     DumpRawTokens,          ///< Dump out raw tokens.
     DumpTokens,             ///< Dump out preprocessed tokens.

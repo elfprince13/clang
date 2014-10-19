@@ -900,6 +900,20 @@ const internal::VariadicDynCastAllOfMatcher<Stmt, DeclRefExpr> declRefExpr;
 ///   if (x) {}
 /// \endcode
 const internal::VariadicDynCastAllOfMatcher<Stmt, IfStmt> ifStmt;
+	
+const internal::VariadicDynCastAllOfMatcher<Stmt, SkeletonStmt> skelStmt;
+	
+AST_MATCHER_P(SkeletonStmt, skelOfKind, std::string, KindWanted){
+	assert(!KindWanted.empty());
+	const IdentifierInfo* const SkelKind = Node.getKind();
+	return (SkelKind != nullptr && SkelKind->getName().equals(KindWanted) );
+}
+	
+AST_MATCHER_P(SkeletonStmt, skelHasName, std::string, NameWanted) {
+	assert(!NameWanted.empty());
+	const IdentifierInfo* const SkelName  = Node.getName();
+	return (SkelName != nullptr && SkelName->getName().equals(NameWanted));
+}
 
 /// \brief Matches for statements.
 ///

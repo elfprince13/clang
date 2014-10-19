@@ -30,7 +30,7 @@ Parser::StmtResult Parser::ParseSkeleton(SourceLocation AtLoc){
 	StmtResult ret = StmtResult();
 	SmallVector<IdentifierInfo*, 16> paramNames;
 	SmallVector<Expr*, 16> paramExprs;
-	IdentifierInfo *is;
+	IdentifierInfo *is = nullptr;
 	
 	if (Tok.is(tok::identifier)) {
 		IdentifierInfo *ii = Tok.getIdentifierInfo();
