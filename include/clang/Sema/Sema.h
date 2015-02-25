@@ -42,6 +42,7 @@
 #include "clang/Sema/ScopeInfo.h"
 #include "clang/Sema/TypoCorrection.h"
 #include "clang/Sema/Weak.h"
+#include "clang/Parse/SkelParserDefs.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SetVector.h"
@@ -3058,7 +3059,6 @@ public:
                                  SourceLocation CondLParen, Expr *Cond,
                                  SourceLocation CondRParen);
 	
-	typedef Stmt* (*SkeletonHandler)(SkeletonStmt* InSkel);
 	StmtResult ActOnSkeletonStmt(SourceLocation AtLoc, SourceLocation SkelLoc,
 									   IdentifierInfo *skelName, IdentifierInfo *blockName,
 									   SmallVector<IdentifierInfo*, 16> paramNames, SmallVector<Expr*, 16> paramExprs,

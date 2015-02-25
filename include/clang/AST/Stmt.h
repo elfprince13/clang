@@ -20,6 +20,7 @@
 #include "clang/Basic/IdentifierTable.h"
 #include "clang/Basic/LLVM.h"
 #include "clang/Basic/SourceLocation.h"
+#include "clang/Parse/SkelParserDefs.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/PointerIntPair.h"
 #include "llvm/Support/Compiler.h"
@@ -1128,24 +1129,35 @@ public:
     return child_range(&SubExprs[0], &SubExprs[0]+END_EXPR);
   }
 };
-	class SkeletonStmt;
-	typedef Stmt* (*SkeletonHandler)(SkeletonStmt* InSkel);
 	class SkeletonStmt : public Stmt {
+	public:
+		typedef struct{
+			SkeletonArgType type;
+			union SkeletonArgData {
+				DeclGroupRef decl;
+				Stmt* stmt;
+				Expr* expr;
+				IdentifierInfo* ident;
+			};
+			SkeletonArgData data;
+		} SkeletonArg;
+	private:
 		SourceLocation AtLoc;
 		SourceLocation SkelLoc;
 		IdentifierInfo *kind;
 		IdentifierInfo *name;
 		
-		int numExprs;
-		int body;
+		int numParams;
 		
-		Stmt **SubExprs;
+		SkeletonArg *Params;
 		IdentifierInfo **ParamNames;
+		
+		Stmt *body;
 		SkeletonHandler handler;
 	public:
 		
 		/// \brief Build an empty for statement.
-		explicit SkeletonStmt(EmptyShell Empty) : Stmt(SkeletonStmtClass, Empty), kind(nullptr), name(nullptr), numExprs(0), body(-1), SubExprs(nullptr), ParamNames(nullptr), handler(nullptr) { }
+		explicit SkeletonStmt(EmptyShell Empty) : Stmt(SkeletonStmtClass, Empty), kind(nullptr), name(nullptr), numParams(0), body(nullptr), Params(nullptr), ParamNames(nullptr), handler(nullptr,false) { }
 
 		SkeletonStmt(const ASTContext &C, SourceLocation atLoc, SourceLocation skelLoc, IdentifierInfo *skelName, IdentifierInfo *blockName,
 					 ArrayRef<IdentifierInfo*> paramNames,
@@ -1156,18 +1168,9 @@ public:
 			return T->getStmtClass() == SkeletonStmtClass;
 		}
 		
-		Stmt *getBody() {
-			return (body >= 0) ? SubExprs[body] : nullptr;
-		};
-		
-		const Stmt *getBody() const {
-			return (body >= 0) ? SubExprs[body] : nullptr;
-		};
-		
-		void setBody(Stmt *S){
-			assert((body >= 0) && "setBody");
-			SubExprs[body] = S;
-		}
+		Stmt *getBody() { return body; }
+		const Stmt *getBody() const { return body; }
+		void setBody(Stmt *S){ body = S; }
 		
 		void setHandler(SkeletonHandler h){ handler = h; }
 		SkeletonHandler getHandler(){ return handler; }
@@ -1181,7 +1184,7 @@ public:
 		const IdentifierInfo* getKind() const { return kind; }
 		const IdentifierInfo* getName() const { return name; }
 		
-		int getNumParams(){ return body; }
+		int getNumParams(){ return numParams; }
 		IdentifierInfo * const* getParamNames() const { return ParamNames; }
 		
 		
@@ -1194,18 +1197,22 @@ public:
 		SourceLocation getSkelLoc() const LLVM_READONLY { return SkelLoc; }
 		SourceLocation getLocStart() const LLVM_READONLY { return getAtLoc(); }
 		SourceLocation getLocEnd() const LLVM_READONLY {
-			assert((body >= 0) && "getLocEnd");
-			return SubExprs[body]->getLocEnd();
+			assert(body != nullptr && "getLocEnd");
+			return body->getLocEnd();
 		}
 		
 		// Iterators
+		/*
 		child_range parameters() {
 			return child_range(SubExprs, SubExprs + body);
 		}
+		*/
 		
+		/*
 		child_range children() {
 			return child_range(SubExprs, SubExprs + numExprs);
 		}
+		*/
 	};
 
 

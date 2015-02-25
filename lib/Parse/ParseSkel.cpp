@@ -36,7 +36,7 @@ Parser::StmtResult Parser::ParseSkeleton(SourceLocation AtLoc){
 		IdentifierInfo *ii = Tok.getIdentifierInfo();
 		SourceLocation SkelLoc = ConsumeToken();
 		SkeletonHandler handler = GetHandlerForSkeleton(*ii);
-		if (handler == nullptr) {
+		if (handler.isValid) {
 			ret = StmtError(Diag(SkelLoc, diag::err_undeclared_var_use) << ii);
 		} else {
 			if(Tok.is(tok::l_paren)) {
@@ -57,43 +57,82 @@ Parser::StmtResult Parser::ParseSkeleton(SourceLocation AtLoc){
 			bool C99orCXX = getLangOpts().C99 || getLangOpts().CPlusPlus;
 			ParseScope SkelScope(this, Scope::DeclScope | Scope::ControlScope, C99orCXX);
 			
-			while (Tok.is(tok::l_square)){
+			for(int argNum = 0; Tok.is(tok::l_square); argNum++){
 				BalancedDelimiterTracker T(*this, tok::l_square);
 				T.consumeOpen();
 				
-				if(Tok.is(tok::identifier)) {
-					IdentifierInfo *ip = Tok.getIdentifierInfo();
-					ConsumeToken();
-					ExprResult er;
-					bool colon = Tok.is(tok::colon);
-					bool equal = Tok.is(tok::equal);
-					assert((!colon || !equal) && "Can't have parsed both a colon and an equal");
-					if (colon || equal) {
-						ConsumeToken();
-						
-						er = ParseExpression();
-		
-						if(er.isUsable() &&
-						   (colon ||
-							// We've parsed out an identifier that we're going to perform
-							// macro-style substitutions on. Any expression will do.
-							er.get()->isEvaluatable(Actions.Context)
-							// We've parsed out an identifier that's going to be a named
-							// Constant. Only a constant expression will do.
-							)
-						   ) {
+				SkeletonArgType argType = handler.GetTypeOfNthArg(argNum);
+				switch(argType){
+					case ARG_IS_IDENT:
+					{
+						if(Tok.is(tok::identifier)) {
+							IdentifierInfo *ip = Tok.getIdentifierInfo();
+							ConsumeToken();
+							
+							////////////////////////////
+							// need to do some stuff here
+							////////////////////////////
+							
+						} else {
+							ret = StmtError(Diag(Tok, diag::err_expected_unqualified_id) << getLangOpts().CPlusPlus);
+						}
+					}
+						break;
+					case ARG_IS_DECL:
+					{
+						StmtVector Stmts;
+						ParsedAttributesWithRange Attrs(AttrFactory);
+						MaybeParseCXX11Attributes(Attrs, nullptr, /*MightBeObjCMessageSend*/ true);
+						SourceLocation DeclStart = Tok.getLocation(), DeclEnd;
+						DeclGroupPtrTy Decl = ParseDeclaration(Stmts, Declarator::BlockContext,
+															   DeclEnd, Attrs);
+						DeclGroupRef dgr = Decl.get();
+						if(!dgr.isNull()){
+							//////////////////////
+							// need to do some stuff here
+							//////////////////////
+						} else {
+							ret = StmtError();
+						}
+					}
+						break;
+					case ARG_IS_EXPR:
+					{
+						ExprResult er = ParseExpression();
+						if(er.isUsable()) {
 							FullExprArg FullExp(Actions.MakeFullExpr(er.get(), SkelLoc));
-							paramNames.push_back(ip);
-							paramExprs.push_back(FullExp.get());
+							
+							////////////////////////////
+							// need to do some stuff here
+							////////////////////////////
+							
+							
 						} else {
 							ret = StmtError(Diag(er.get()->getLocStart(), diag::err_expected_expression));
 						}
-					} else {
-						ret = StmtError(Diag(Tok, diag::err_expected_either) << tok::colon << tok::equal);
 					}
-				} else {
-					ret = StmtError(Diag(Tok, diag::err_expected_unqualified_id) << getLangOpts().CPlusPlus);
+						
+						break;
+					case ARG_IS_STMT:
+					{
+						StmtResult sr = ParseStatement();
+						if(sr.isUsable()) {
+							
+							////////////////////////////
+							// need to do some stuff here
+							////////////////////////////
+							
+							
+						} else {
+							ret = StmtError(Diag(sr.get()->getLocStart(), diag::err_expected_statement));
+						}
+					}
+						break;
+					case NO_SUCH_ARG:
+						ret = StmtError();
+						break;
 				}
+				
 				
 				T.consumeClose();
 			}
@@ -121,15 +160,20 @@ Parser::StmtResult doParseSkeletonWithName_Loop2dAccumulate(SourceLocation kindL
 }
 //*/
 
-Parser::SkeletonHandler Parser::GetHandlerForSkeleton(IdentifierInfo &skelIdent){
+SkeletonHandler Parser::GetHandlerForSkeleton(IdentifierInfo &skelIdent){
 	/*
 	// Hard-code this as a test;
 	llvm::sys::DynamicLibrary::AddSymbol("doParseSkeletonWithName_Loop2dAccumulate", (void*)&doParseSkeletonWithName_Loop2dAccumulate);
 	//*/
 	
-	std::string symName("doParseSkeletonWithName_");
+	SkeletonHandler ret;
+	
+	std::string symName("getArgTypesForSkeletonOfKind_");
 	StringRef skelName = skelIdent.getName();
 	symName += skelName;
 	
-	return (SkeletonHandler)llvm::sys::DynamicLibrary::SearchForAddressOfSymbol(symName);
+	ret.GetTypeOfNthArg = (SkeletonArgType (*)(int))(llvm::sys::DynamicLibrary::SearchForAddressOfSymbol(symName));
+	ret.isValid = (ret.GetTypeOfNthArg == nullptr);
+	
+	return ret;
 }

@@ -140,7 +140,7 @@ void StmtPrinter::PrintRawDeclStmt(const DeclStmt *S) {
 }
 
 void StmtPrinter::VisitNullStmt(NullStmt *Node) {
-  Indent() << SExpL() << ";" << SExpR() << SExpCh("","\n");
+  Indent() << SExpL() << "" << SExpR() << SExpCh("","\n");
 }
 
 void StmtPrinter::VisitDeclStmt(DeclStmt *Node) {
@@ -1196,7 +1196,7 @@ void StmtPrinter::VisitParenExpr(ParenExpr *Node) {
   OS << ")";
 }
 void StmtPrinter::VisitUnaryOperator(UnaryOperator *Node) {
-	OS << SExpCh("(UnOp ","");
+	OS << SExpL();
   if (!Node->isPostfix()) {
     OS << UnaryOperator::getOpcodeStr(Node->getOpcode());
 
@@ -1317,16 +1317,18 @@ void StmtPrinter::PrintCallArgs(CallExpr *Call) {
       break;
     }
 
-    if (i) OS << ", ";
+    if (i) OS << SExpCh("", ",") << " ";
     PrintExpr(Call->getArg(i));
   }
 }
 
 void StmtPrinter::VisitCallExpr(CallExpr *Call) {
+	OS << SExpL() << SExpCh("call ","");
   PrintExpr(Call->getCallee());
-  OS << "(";
+  OS << SExpCh(" ", "(");
   PrintCallArgs(Call);
-  OS << ")";
+  OS << SExpCh("",")");
+	OS << SExpR();
 }
 void StmtPrinter::VisitMemberExpr(MemberExpr *Node) {
   // FIXME: Suppress printing implicit bases (like "this")
@@ -1391,24 +1393,30 @@ void StmtPrinter::VisitBinaryOperator(BinaryOperator *Node) {
 void StmtPrinter::VisitCompoundAssignOperator(CompoundAssignOperator *Node) {
 	VisitBinaryOperator(Node);
 }
+
+const char * CondOpStr = "?: ";
 void StmtPrinter::VisitConditionalOperator(ConditionalOperator *Node) {
+	OS << SExpL() << SExpCh(CondOpStr, "");
   PrintExpr(Node->getCond());
-  OS << " ? ";
-  PrintExpr(Node->getLHS());
-  OS << " : ";
+	OS << " " << SExpCh("", "? ");
+	PrintExpr(Node->getLHS());
+	OS << " " << SExpCh("", ": ");
   PrintExpr(Node->getRHS());
+	OS << SExpR();
 }
 
 // GNU extensions.
 
 void
 StmtPrinter::VisitBinaryConditionalOperator(BinaryConditionalOperator *Node) {
+	OS << SExpL() << SExpCh(CondOpStr, "");
   PrintExpr(Node->getCommon());
-  OS << " ?: ";
+  OS << " " << SExpCh("", CondOpStr);
   PrintExpr(Node->getFalseExpr());
+	OS << SExpR();
 }
 void StmtPrinter::VisitAddrLabelExpr(AddrLabelExpr *Node) {
-  OS << "&&" << Node->getLabel()->getName();
+  OS << SExpL() << "&&" << SExpCh(" ", "") << Node->getLabel()->getName() << SExpR();
 }
 
 void StmtPrinter::VisitStmtExpr(StmtExpr *E) {

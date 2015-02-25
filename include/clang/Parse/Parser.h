@@ -22,6 +22,7 @@
 #include "clang/Sema/DeclSpec.h"
 #include "clang/Sema/LoopHint.h"
 #include "clang/Sema/Sema.h"
+#include "clang/Parse/SkelParserDefs.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/PrettyStackTrace.h"
@@ -1241,7 +1242,6 @@ private:
 	// Skeletons: External Definitions.
 	DeclGroupPtrTy ParseTopLevelSkeleton();
 	StmtResult ParseSkeleton(SourceLocation AtLoc);
-	typedef Stmt* (*SkeletonHandler)(SkeletonStmt* InSkel);
 	SkeletonHandler GetHandlerForSkeleton(IdentifierInfo &skelIdent);
 
   // Objective-C External Declarations

@@ -42,6 +42,14 @@ namespace {
                 unsigned Indentation = 0, bool PrintInstantiation = false)
       : Out(Out), Policy(Policy), Indentation(Indentation),
         PrintInstantiation(PrintInstantiation) { }
+	  
+	  
+	  inline bool SExp() { return Policy.UseSExp; }
+	  inline const char * SExpCh(const char * Parens, const char * NoParens){
+		  return SExp() ? Parens : NoParens;
+	  }
+	  inline const char * SExpL(const char * alt = ""){ return SExpCh("(",alt); }
+	  inline const char * SExpR(const char * alt = ""){ return SExpCh(")",alt); }
 
     void VisitDeclContext(DeclContext *DC, bool Indent = true);
 
@@ -139,8 +147,10 @@ static QualType getDeclType(Decl* D) {
 void Decl::printGroup(Decl** Begin, unsigned NumDecls,
                       raw_ostream &Out, const PrintingPolicy &Policy,
                       unsigned Indentation) {
+	Out << (Policy.UseSExp ? "(def " : "");
   if (NumDecls == 1) {
     (*Begin)->print(Out, Policy, Indentation);
+	  Out << (Policy.UseSExp ? ")" : "");
     return;
   }
 
@@ -162,12 +172,14 @@ void Decl::printGroup(Decl** Begin, unsigned NumDecls,
       SubPolicy.SuppressSpecifiers = false;
       isFirst = false;
     } else {
-      if (!isFirst) Out << ", ";
+		if (!isFirst) Out << (Policy.UseSExp ? "" : ",") << " ";
       SubPolicy.SuppressSpecifiers = true;
     }
 
     (*Begin)->print(Out, SubPolicy, Indentation);
   }
+	
+	Out << (Policy.UseSExp ? ")" : "");
 }
 
 LLVM_DUMP_METHOD void DeclContext::dumpDeclContext() const {
@@ -398,8 +410,10 @@ void DeclPrinter::VisitEnumConstantDecl(EnumConstantDecl *D) {
 }
 
 void DeclPrinter::VisitFunctionDecl(FunctionDecl *D) {
+	Out << SExpCh("(defun ","");
   CXXConstructorDecl *CDecl = dyn_cast<CXXConstructorDecl>(D);
   CXXConversionDecl *ConversionDecl = dyn_cast<CXXConversionDecl>(D);
+	Out << SExpL();
   if (!Policy.SuppressSpecifiers) {
     switch (D->getStorageClass()) {
     case SC_None: break;
@@ -418,6 +432,7 @@ void DeclPrinter::VisitFunctionDecl(FunctionDecl *D) {
         (ConversionDecl && ConversionDecl->isExplicit()))
       Out << "explicit ";
   }
+	Out << SExpCh(") ","");
 
   PrintingPolicy SubPolicy(Policy);
   SubPolicy.SuppressSpecifiers = false;
@@ -433,18 +448,18 @@ void DeclPrinter::VisitFunctionDecl(FunctionDecl *D) {
     const FunctionProtoType *FT = nullptr;
     if (D->hasWrittenPrototype())
       FT = dyn_cast<FunctionProtoType>(AFT);
-
+	  Proto += SExpCh(" ", "");
     Proto += "(";
     if (FT) {
       llvm::raw_string_ostream POut(Proto);
       DeclPrinter ParamPrinter(POut, SubPolicy, Indentation);
       for (unsigned i = 0, e = D->getNumParams(); i != e; ++i) {
-        if (i) POut << ", ";
+        if (i) POut << SExpCh("",",") << " ";
         ParamPrinter.VisitParmVarDecl(D->getParamDecl(i));
       }
 
       if (FT->isVariadic()) {
-        if (D->getNumParams()) POut << ", ";
+        if (D->getNumParams()) POut << SExpCh("",",") << " ";
         POut << "...";
       }
     } else if (D->doesThisDeclarationHaveABody() && !D->hasPrototype()) {
@@ -605,6 +620,7 @@ void DeclPrinter::VisitFunctionDecl(FunctionDecl *D) {
       D->getBody()->printPretty(Out, nullptr, SubPolicy, Indentation);
     Out << '\n';
   }
+	Out << SExpR();
 }
 
 void DeclPrinter::VisitFriendDecl(FriendDecl *D) {
@@ -662,7 +678,9 @@ void DeclPrinter::VisitLabelDecl(LabelDecl *D) {
 }
 
 void DeclPrinter::VisitVarDecl(VarDecl *D) {
+	Out << SExpL();
   if (!Policy.SuppressSpecifiers) {
+	  Out << SExpL();
     StorageClass SC = D->getStorageClass();
     if (SC != SC_None)
       Out << VarDecl::getStorageClassSpecifierString(SC) << " ";
@@ -683,6 +701,7 @@ void DeclPrinter::VisitVarDecl(VarDecl *D) {
 
     if (D->isModulePrivate())
       Out << "__module_private__ ";
+	  Out << SExpCh(") ","");
   }
 
   QualType T = D->getTypeSourceInfo()
@@ -702,7 +721,7 @@ void DeclPrinter::VisitVarDecl(VarDecl *D) {
     }
     if (!ImplicitInit) {
       if ((D->getInitStyle() == VarDecl::CallInit) && !isa<ParenListExpr>(Init))
-        Out << "(";
+        Out << SExpCh(" ","") << "(";
       else if (D->getInitStyle() == VarDecl::CInit) {
         Out << " = ";
       }
@@ -712,6 +731,7 @@ void DeclPrinter::VisitVarDecl(VarDecl *D) {
     }
   }
   prettyPrintAttributes(D);
+	Out << SExpR();
 }
 
 void DeclPrinter::VisitParmVarDecl(ParmVarDecl *D) {

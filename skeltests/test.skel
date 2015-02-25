@@ -1,6 +1,7 @@
 int main(int argc, char * argv[]){
-	int a = 5;
-	@Loop2dAccumulate(cute)[test1: 5]{
+	int a = 5, x(6), y, z;
+	int p, *q = &p;
+	@Loop2dAccumulate(test_skel)[test1: 5][test2: a]{
 		a++; 
 	}
 
@@ -50,12 +51,18 @@ test_label:
 
 	for(;;);
 	for(a = 0; a < 5; a++){ int i = 0; }
+	for(int i = 0; i < 5; i++){ i++; }
 	if(a == 0) goto test_label;
 	if(a == 6) goto *&&test_label;
+	
+	int c[2][2] = {{0,1},{0,1}};
 	@Loop2dAccumulate[test1: 5]
 			[test2 = 5]
-			[test3: argc];//[test4= argc][test5 + 5];
-	//@Loop1d(blah);
+			[test3: argc]{
+		int i = 0, j = 0;
+		c[i][j] += c[i][j];
+	}
+		
 	
 	int b[2] = {0, 1};
 	for(auto a : b){
@@ -68,7 +75,10 @@ test_label:
              : /* no output registers */
              : "c" (2), "a" (0), "D" (b)
              : "%ecx", "%edi" 
-             );	
+             );
+
+	a = true ? a : b[0];
+	a = a ?: b[1];	
 
 	return 0;
 	//return;
