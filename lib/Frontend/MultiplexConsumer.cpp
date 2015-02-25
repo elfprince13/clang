@@ -107,6 +107,7 @@ public:
                                     const ObjCPropertyDecl *OrigProp,
                                     const ObjCCategoryDecl *ClassExt) override;
   void DeclarationMarkedUsed(const Decl *D) override;
+  void DeclarationMarkedOpenMPThreadPrivate(const Decl *D) override;
 
 private:
   std::vector<ASTMutationListener*> Listeners;
@@ -179,6 +180,11 @@ void MultiplexASTMutationListener::AddedObjCPropertyInClassExtension(
 void MultiplexASTMutationListener::DeclarationMarkedUsed(const Decl *D) {
   for (size_t i = 0, e = Listeners.size(); i != e; ++i)
     Listeners[i]->DeclarationMarkedUsed(D);
+}
+void MultiplexASTMutationListener::DeclarationMarkedOpenMPThreadPrivate(
+    const Decl *D) {
+  for (size_t i = 0, e = Listeners.size(); i != e; ++i)
+    Listeners[i]->DeclarationMarkedOpenMPThreadPrivate(D);
 }
 
 }  // end namespace clang
@@ -286,10 +292,9 @@ void MultiplexConsumer::CompleteTentativeDefinition(VarDecl *D) {
     Consumer->CompleteTentativeDefinition(D);
 }
 
-void MultiplexConsumer::HandleVTable(
-    CXXRecordDecl *RD, bool DefinitionRequired) {
+void MultiplexConsumer::HandleVTable(CXXRecordDecl *RD) {
   for (auto &Consumer : Consumers)
-    Consumer->HandleVTable(RD, DefinitionRequired);
+    Consumer->HandleVTable(RD);
 }
 
 ASTMutationListener *MultiplexConsumer::GetASTMutationListener() {
