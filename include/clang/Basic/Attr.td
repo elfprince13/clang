@@ -440,8 +440,11 @@ def Availability : InheritableAttr {
   let AdditionalMembers =
 [{static llvm::StringRef getPrettyPlatformName(llvm::StringRef Platform) {
     return llvm::StringSwitch<llvm::StringRef>(Platform)
+             .Case("android", "Android")
              .Case("ios", "iOS")
              .Case("macosx", "OS X")
+             .Case("ios_app_extension", "iOS (App Extension)")
+             .Case("macosx_app_extension", "OS X (App Extension)")
              .Default(llvm::StringRef());
 } }];
   let HasCustomParsing = 1;
@@ -578,7 +581,7 @@ def CUDAInvalidTarget : InheritableAttr {
 
 def CUDALaunchBounds : InheritableAttr {
   let Spellings = [GNU<"launch_bounds">];
-  let Args = [IntArgument<"MaxThreads">, DefaultIntArgument<"MinBlocks", 0>];
+  let Args = [ExprArgument<"MaxThreads">, ExprArgument<"MinBlocks", 1>];
   let LangOpts = [CUDA];
   let Subjects = SubjectList<[ObjCMethod, FunctionLike], WarnDiag,
                              "ExpectedFunctionOrMethod">;
@@ -1052,6 +1055,11 @@ def ObjCMethodFamily : InheritableAttr {
 
 def ObjCNSObject : InheritableAttr {
   let Spellings = [GNU<"NSObject">];
+  let Documentation = [Undocumented];
+}
+
+def ObjCIndependentClass : InheritableAttr {
+  let Spellings = [GNU<"objc_independent_class">];
   let Documentation = [Undocumented];
 }
 

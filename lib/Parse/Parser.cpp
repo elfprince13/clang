@@ -669,7 +669,17 @@ Parser::ParseExternalDeclaration(ParsedAttributesWithRange &attrs,
 
     SourceLocation StartLoc = Tok.getLocation();
     SourceLocation EndLoc;
+
     ExprResult Result(ParseSimpleAsm(&EndLoc));
+
+    // Check if GNU-style InlineAsm is disabled.
+    // Empty asm string is allowed because it will not introduce
+    // any assembly code.
+    if (!(getLangOpts().GNUAsm || Result.isInvalid())) {
+      const auto *SL = cast<StringLiteral>(Result.get());
+      if (!SL->getString().trim().empty())
+        Diag(StartLoc, diag::err_gnu_inline_asm_disabled);
+    }
 
     ExpectAndConsume(tok::semi, diag::err_expected_after,
                      "top-level asm block");
@@ -1058,7 +1068,6 @@ Decl *Parser::ParseFunctionDefinition(ParsingDeclarator &D,
 
   if (TryConsumeToken(tok::equal)) {
     assert(getLangOpts().CPlusPlus && "Only C++ function definitions have '='");
-    Actions.ActOnFinishFunctionBody(Res, nullptr, false);
 
     bool Delete = false;
     SourceLocation KWLoc;
@@ -1086,6 +1095,8 @@ Decl *Parser::ParseFunctionDefinition(ParsingDeclarator &D,
       SkipUntil(tok::semi);
     }
 
+    Stmt *GeneratedBody = Res ? Res->getBody() : nullptr;
+    Actions.ActOnFinishFunctionBody(Res, GeneratedBody, false);
     return Res;
   }
 

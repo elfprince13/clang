@@ -836,7 +836,8 @@ Sema::CheckClassTemplate(Scope *S, unsigned TagSpec, TagUseKind TUK,
                          AccessSpecifier AS, SourceLocation ModulePrivateLoc,
                          SourceLocation FriendLoc,
                          unsigned NumOuterTemplateParamLists,
-                         TemplateParameterList** OuterTemplateParamLists) {
+                         TemplateParameterList** OuterTemplateParamLists,
+                         SkipBodyInfo *SkipBody) {
   assert(TemplateParams && TemplateParams->size() > 0 &&
          "No template parameters");
   assert(TUK != TUK_Reference && "Can only declare or define class templates");
@@ -993,6 +994,19 @@ Sema::CheckClassTemplate(Scope *S, unsigned TagSpec, TagUseKind TUK,
     // Check for redefinition of this class template.
     if (TUK == TUK_Definition) {
       if (TagDecl *Def = PrevRecordDecl->getDefinition()) {
+        // If we have a prior definition that is not visible, treat this as
+        // simply making that previous definition visible.
+        NamedDecl *Hidden = nullptr;
+        if (SkipBody && !hasVisibleDefinition(Def, &Hidden)) {
+          SkipBody->ShouldSkip = true;
+          auto *Tmpl = cast<CXXRecordDecl>(Hidden)->getDescribedClassTemplate();
+          assert(Tmpl && "original definition of a class template is not a "
+                         "class template?");
+          makeMergedDefinitionVisible(Hidden, KWLoc);
+          makeMergedDefinitionVisible(Tmpl, KWLoc);
+          return Def;
+        }
+
         Diag(NameLoc, diag::err_redefinition) << Name;
         Diag(Def->getLocation(), diag::note_previous_definition);
         // FIXME: Would it make sense to try to "forget" the previous
@@ -5835,11 +5849,13 @@ static bool CheckTemplateSpecializationScope(Sema &S,
     if (isa<TranslationUnitDecl>(SpecializedContext))
       S.Diag(Loc, diag::err_template_spec_redecl_global_scope)
         << EntityKind << Specialized;
-    else if (isa<NamespaceDecl>(SpecializedContext))
-      S.Diag(Loc, diag::err_template_spec_redecl_out_of_scope)
-        << EntityKind << Specialized
-        << cast<NamedDecl>(SpecializedContext);
-    else
+    else if (isa<NamespaceDecl>(SpecializedContext)) {
+      int Diag = diag::err_template_spec_redecl_out_of_scope;
+      if (S.getLangOpts().MicrosoftExt)
+        Diag = diag::ext_ms_template_spec_redecl_out_of_scope;
+      S.Diag(Loc, Diag) << EntityKind << Specialized
+                        << cast<NamedDecl>(SpecializedContext);
+    } else
       llvm_unreachable("unexpected namespace context for specialization");
 
     S.Diag(Specialized->getLocation(), diag::note_specialized_entity);
@@ -8303,7 +8319,7 @@ void Sema::MarkAsLateParsedTemplate(FunctionDecl *FD, Decl *FnD,
   // Take tokens to avoid allocations
   LPT->Toks.swap(Toks);
   LPT->D = FnD;
-  LateParsedTemplateMap[FD] = LPT;
+  LateParsedTemplateMap.insert(std::make_pair(FD, LPT));
 
   FD->setLateTemplateParsed(true);
 }

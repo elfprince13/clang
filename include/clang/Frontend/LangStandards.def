@@ -152,6 +152,6 @@ LANGSTANDARD(cuda, "cuda",
 
 LANGSTANDARD(skeletons, "skeletons",
              "Brown Skeletons for CUDA(tm)",
-             Skeletons | PyTxform | LineComment | CPlusPlus | Digraphs)
+             Skeletons | LineComment | CPlusPlus | Digraphs)
 
 #undef LANGSTANDARD

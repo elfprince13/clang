@@ -31,7 +31,6 @@ enum LangFeatures {
   HexFloat = (1 << 10),
   ImplicitInt = (1 << 11),
 	Skeletons = (1 << 12),
-	PyTxform = (1 << 13)
 };
 
 }

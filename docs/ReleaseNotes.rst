@@ -62,6 +62,11 @@ about them. The improvements since the 3.5 release include:
 New Compiler Flags
 ------------------
 
+The sized deallocation feature of C++14 is now controlled by the
+``-fsized-deallocation`` flag. This feature relies on library support that
+isn't yet widely deployed, so the user must supply an extra flag to get the
+extra functionality.
+
 The option ....
 
 
@@ -113,7 +118,13 @@ These are major API changes that have happened since the 3.6 release of
 Clang. If upgrading an external codebase that uses Clang as a library,
 this section should help get you past the largest hurdles of upgrading.
 
-...
+-  Some of the `PPCallbacks` interface now deals in `MacroDefinition`
+   objects instead of `MacroDirective` objects. This allows preserving
+   full information on macros imported from modules.
+
+-  `clang-c/Index.h` no longer `#include`\s `clang-c/Documentation.h`.
+   You now need to explicitly `#include "clang-c/Documentation.h"` if
+   you use the libclang documentation API.
 
 libclang
 --------

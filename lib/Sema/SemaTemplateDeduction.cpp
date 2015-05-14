@@ -576,6 +576,7 @@ struct clang::DeducedPack {
   DeducedPack *Outer;
 };
 
+namespace {
 /// A scope in which we're performing pack deduction.
 class PackDeductionScope {
 public:
@@ -730,6 +731,7 @@ private:
 
   SmallVector<DeducedPack, 2> Packs;
 };
+} // namespace
 
 /// \brief Deduce the template arguments by comparing the list of parameter
 /// types to the list of argument types, as in the parameter-type-lists of
@@ -3654,8 +3656,10 @@ SpecializeCorrespondingLambdaCallOperatorAndInvoker(
   FunctionTemplateDecl *InvokerTemplate = LambdaClass->
                   getLambdaStaticInvoker()->getDescribedFunctionTemplate();
 
-  Sema::TemplateDeductionResult LLVM_ATTRIBUTE_UNUSED Result
-    = S.FinishTemplateArgumentDeduction(InvokerTemplate, DeducedArguments, 0, 
+#ifndef NDEBUG
+  Sema::TemplateDeductionResult LLVM_ATTRIBUTE_UNUSED Result =
+#endif
+    S.FinishTemplateArgumentDeduction(InvokerTemplate, DeducedArguments, 0, 
           InvokerSpecialized, TDInfo);
   assert(Result == Sema::TDK_Success && 
     "If the call operator succeeded so should the invoker!");

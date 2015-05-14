@@ -316,8 +316,17 @@ Sema::ActOnParamDefaultArgument(Decl *param, SourceLocation EqualLoc,
   if (DiagnoseUnexpandedParameterPack(DefaultArg, UPPC_DefaultArgument)) {
     Param->setInvalidDecl();
     return;
-  }    
-      
+  }
+
+  // C++11 [dcl.fct.default]p3
+  //   A default argument expression [...] shall not be specified for a
+  //   parameter pack.
+  if (Param->isParameterPack()) {
+    Diag(EqualLoc, diag::err_param_default_argument_on_parameter_pack)
+        << DefaultArg->getSourceRange();
+    return;
+  }
+
   // Check that the default argument is well-formed
   CheckDefaultArgumentVisitor DefaultArgChecker(DefaultArg, this);
   if (DefaultArgChecker.Visit(DefaultArg)) {
@@ -606,7 +615,8 @@ bool Sema::MergeCXXFunctionDecl(FunctionDecl *New, FunctionDecl *Old,
       << New << New->isConstexpr();
     Diag(Old->getLocation(), diag::note_previous_declaration);
     Invalid = true;
-  } else if (!Old->isInlined() && New->isInlined() && Old->isDefined(Def)) {
+  } else if (!Old->getMostRecentDecl()->isInlined() && New->isInlined() &&
+             Old->isDefined(Def)) {
     // C++11 [dcl.fcn.spec]p4:
     //   If the definition of a function appears in a translation unit before its
     //   first declaration as inline, the program is ill-formed.
@@ -688,16 +698,16 @@ void Sema::CheckCXXDefaultArguments(FunctionDecl *FD) {
       break;
   }
 
-  // C++ [dcl.fct.default]p4:
-  //   In a given function declaration, all parameters
-  //   subsequent to a parameter with a default argument shall
-  //   have default arguments supplied in this or previous
-  //   declarations. A default argument shall not be redefined
-  //   by a later declaration (not even to the same value).
+  // C++11 [dcl.fct.default]p4:
+  //   In a given function declaration, each parameter subsequent to a parameter
+  //   with a default argument shall have a default argument supplied in this or
+  //   a previous declaration or shall be a function parameter pack. A default
+  //   argument shall not be redefined by a later declaration (not even to the
+  //   same value).
   unsigned LastMissingDefaultArg = 0;
   for (; p < NumParams; ++p) {
     ParmVarDecl *Param = FD->getParamDecl(p);
-    if (!Param->hasDefaultArg()) {
+    if (!Param->hasDefaultArg() && !Param->isParameterPack()) {
       if (Param->isInvalidDecl())
         /* We already complained about this parameter. */;
       else if (Param->getIdentifier())
@@ -3581,8 +3591,9 @@ BuildImplicitMemberInitializer(Sema &SemaRef, CXXConstructorDecl *Constructor,
       InitializationKind::CreateDirect(Loc, SourceLocation(), SourceLocation());
     
     Expr *CtorArgE = CtorArg.getAs<Expr>();
-    InitializationSequence InitSeq(SemaRef, Entities.back(), InitKind, CtorArgE);
-    
+    InitializationSequence InitSeq(SemaRef, Entities.back(), InitKind,
+                                   CtorArgE);
+
     ExprResult MemberInit
       = InitSeq.Perform(SemaRef, Entities.back(), InitKind, 
                         MultiExprArg(&CtorArgE, 1));
@@ -4780,18 +4791,21 @@ static void checkDLLAttribute(Sema &S, CXXRecordDecl *Class) {
       if (MD->isDeleted())
         continue;
 
-      if (MD->isMoveAssignmentOperator() && ClassImported && MD->isInlined()) {
-        // Current MSVC versions don't export the move assignment operators, so
-        // don't attempt to import them if we have a definition.
-        continue;
-      }
-
-      if (MD->isInlined() &&
-          !S.Context.getTargetInfo().getCXXABI().isMicrosoft()) {
+      if (MD->isInlined()) {
         // MinGW does not import or export inline methods.
-        continue;
+        if (!S.Context.getTargetInfo().getCXXABI().isMicrosoft())
+          continue;
+
+        // MSVC versions before 2015 don't export the move assignment operators,
+        // so don't attempt to import them if we have a definition.
+        if (ClassImported && MD->isMoveAssignmentOperator() &&
+            !S.getLangOpts().isCompatibleWithMSVC(LangOptions::MSVC2015))
+          continue;
       }
     }
+
+    if (!cast<NamedDecl>(Member)->isExternallyVisible())
+      continue;
 
     if (!getDLLAttr(Member)) {
       auto *NewAttr =
@@ -4874,9 +4888,6 @@ void Sema::CheckCompletedCXXClass(CXXRecordDecl *Record) {
       }
     }
   }
-
-  if (Record->isDynamicClass() && !Record->isDependentType())
-    DynamicClasses.push_back(Record);
 
   if (Record->getIdentifier()) {
     // C++ [class.mem]p13:
@@ -8084,15 +8095,7 @@ NamedDecl *Sema::BuildUsingDeclaration(Scope *S, AccessSpecifier AS,
   if (RequireCompleteDeclContext(SS, LookupContext))
     return BuildInvalid();
 
-  // The normal rules do not apply to inheriting constructor declarations.
-  if (NameInfo.getName().getNameKind() == DeclarationName::CXXConstructorName) {
-    UsingDecl *UD = BuildValid();
-    CheckInheritingConstructorUsingDecl(UD);
-    return UD;
-  }
-
-  // Otherwise, look up the target name.
-
+  // Look up the target name.
   LookupResult R(*this, NameInfo, LookupOrdinaryName);
 
   // Unlike most lookups, we don't always want to hide tag
@@ -8111,8 +8114,12 @@ NamedDecl *Sema::BuildUsingDeclaration(Scope *S, AccessSpecifier AS,
 
   LookupQualifiedName(R, LookupContext);
 
-  // Try to correct typos if possible.
-  if (R.empty()) {
+  // Try to correct typos if possible. If constructor name lookup finds no
+  // results, that means the named class has no explicit constructors, and we
+  // suppressed declaring implicit ones (probably because it's dependent or
+  // invalid).
+  if (R.empty() &&
+      NameInfo.getName().getNameKind() != DeclarationName::CXXConstructorName) {
     if (TypoCorrection Corrected = CorrectTypo(
             R.getLookupNameInfo(), R.getLookupKind(), S, &SS,
             llvm::make_unique<UsingValidatorCCC>(
@@ -8142,16 +8149,12 @@ NamedDecl *Sema::BuildUsingDeclaration(Scope *S, AccessSpecifier AS,
         NameInfo.setName(Context.DeclarationNames.getCXXConstructorName(
             Context.getCanonicalType(Context.getRecordType(RD))));
         NameInfo.setNamedTypeInfo(nullptr);
-
-        // Build it and process it as an inheriting constructor.
-        UsingDecl *UD = BuildValid();
-        CheckInheritingConstructorUsingDecl(UD);
-        return UD;
+        for (auto *Ctor : LookupConstructors(RD))
+          R.addDecl(Ctor);
+      } else {
+        // FIXME: Pick up all the declarations if we found an overloaded function.
+        R.addDecl(ND);
       }
-
-      // FIXME: Pick up all the declarations if we found an overloaded function.
-      R.setLookupName(Corrected.getCorrection());
-      R.addDecl(ND);
     } else {
       Diag(IdentLoc, diag::err_no_member)
         << NameInfo.getName() << LookupContext << SS.getRange();
@@ -8191,6 +8194,18 @@ NamedDecl *Sema::BuildUsingDeclaration(Scope *S, AccessSpecifier AS,
   }
 
   UsingDecl *UD = BuildValid();
+
+  // The normal rules do not apply to inheriting constructor declarations.
+  if (NameInfo.getName().getNameKind() == DeclarationName::CXXConstructorName) {
+    // Suppress access diagnostics; the access check is instead performed at the
+    // point of use for an inheriting constructor.
+    R.suppressDiagnostics();
+    CheckInheritingConstructorUsingDecl(UD);
+    return UD;
+  }
+
+  // Otherwise, look up the target name.
+
   for (LookupResult::iterator I = R.begin(), E = R.end(); I != E; ++I) {
     UsingShadowDecl *PrevDecl = nullptr;
     if (!CheckUsingShadowDecl(UD, *I, Previous, PrevDecl))
@@ -8476,7 +8491,8 @@ Decl *Sema::ActOnAliasDeclaration(Scope *S,
                                   SourceLocation UsingLoc,
                                   UnqualifiedId &Name,
                                   AttributeList *AttrList,
-                                  TypeResult Type) {
+                                  TypeResult Type,
+                                  Decl *DeclFromDeclSpec) {
   // Skip up to the relevant declaration scope.
   while (S->getFlags() & Scope::TemplateParamScope)
     S = S->getParent();
@@ -8604,6 +8620,10 @@ Decl *Sema::ActOnAliasDeclaration(Scope *S,
 
     NewND = NewDecl;
   } else {
+    if (auto *TD = dyn_cast_or_null<TagDecl>(DeclFromDeclSpec)) {
+      setTagNameForLinkagePurposes(TD, NewTD);
+      handleTagNumbering(TD, S);
+    }
     ActOnTypedefNameDecl(S, CurContext, NewTD, Previous, Redeclaration);
     NewND = NewTD;
   }
@@ -9418,6 +9438,44 @@ void Sema::ActOnFinishCXXMemberDecls() {
   }
 }
 
+static void getDefaultArgExprsForConstructors(Sema &S, CXXRecordDecl *Class) {
+  // Don't do anything for template patterns.
+  if (Class->getDescribedClassTemplate())
+    return;
+
+  for (Decl *Member : Class->decls()) {
+    auto *CD = dyn_cast<CXXConstructorDecl>(Member);
+    if (!CD) {
+      // Recurse on nested classes.
+      if (auto *NestedRD = dyn_cast<CXXRecordDecl>(Member))
+        getDefaultArgExprsForConstructors(S, NestedRD);
+      continue;
+    } else if (!CD->isDefaultConstructor() || !CD->hasAttr<DLLExportAttr>()) {
+      continue;
+    }
+
+    for (unsigned I = 0, E = CD->getNumParams(); I != E; ++I) {
+      // Skip any default arguments that we've already instantiated.
+      if (S.Context.getDefaultArgExprForConstructor(CD, I))
+        continue;
+
+      Expr *DefaultArg = S.BuildCXXDefaultArgExpr(Class->getLocation(), CD,
+                                                  CD->getParamDecl(I)).get();
+      S.Context.addDefaultArgExprForConstructor(CD, I, DefaultArg);
+    }
+  }
+}
+
+void Sema::ActOnFinishCXXMemberDefaultArgs(Decl *D) {
+  auto *RD = dyn_cast<CXXRecordDecl>(D);
+
+  // Default constructors that are annotated with __declspec(dllexport) which
+  // have default arguments or don't use the standard calling convention are
+  // wrapped with a thunk called the default constructor closure.
+  if (RD && Context.getTargetInfo().getCXXABI().isMicrosoft())
+    getDefaultArgExprsForConstructors(*this, RD);
+}
+
 void Sema::AdjustDestructorExceptionSpec(CXXRecordDecl *ClassDecl,
                                          CXXDestructorDecl *Destructor) {
   assert(getLangOpts().CPlusPlus11 &&
@@ -10156,7 +10214,9 @@ void Sema::DefineImplicitCopyAssignment(SourceLocation CurrentLocation,
   
   // Assign non-static members.
   for (auto *Field : ClassDecl->fields()) {
-    if (Field->isUnnamedBitfield())
+    // FIXME: We should form some kind of AST representation for the implied
+    // memcpy in a union copy operation.
+    if (Field->isUnnamedBitfield() || Field->getParent()->isUnion())
       continue;
 
     if (Field->isInvalidDecl()) {
@@ -10586,7 +10646,9 @@ void Sema::DefineImplicitMoveAssignment(SourceLocation CurrentLocation,
 
   // Assign non-static members.
   for (auto *Field : ClassDecl->fields()) {
-    if (Field->isUnnamedBitfield())
+    // FIXME: We should form some kind of AST representation for the implied
+    // memcpy in a union copy operation.
+    if (Field->isUnnamedBitfield() || Field->getParent()->isUnion())
       continue;
 
     if (Field->isInvalidDecl()) {
@@ -11936,7 +11998,7 @@ VarDecl *Sema::BuildExceptionDeclaration(Scope *S,
       //
       // We just pretend to initialize the object with itself, then make sure
       // it can be destroyed later.
-      QualType initType = ExDeclType;
+      QualType initType = Context.getExceptionObjectType(ExDeclType);
 
       InitializedEntity entity =
         InitializedEntity::InitializeVariable(ExDecl);

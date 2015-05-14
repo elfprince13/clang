@@ -321,11 +321,11 @@ StringRef Preprocessor::getLastMacroWithSpelling(
   StringRef BestSpelling;
   for (Preprocessor::macro_iterator I = macro_begin(), E = macro_end();
        I != E; ++I) {
-    if (!I->second->getMacroInfo()->isObjectLike())
-      continue;
     const MacroDirective::DefInfo
-      Def = I->second->findDirectiveAtLoc(Loc, SourceMgr);
-    if (!Def)
+      Def = I->second.findDirectiveAtLoc(Loc, SourceMgr);
+    if (!Def || !Def.getMacroInfo())
+      continue;
+    if (!Def.getMacroInfo()->isObjectLike())
       continue;
     if (!MacroDefinitionEquals(Def.getMacroInfo(), Tokens))
       continue;
@@ -584,6 +584,23 @@ void Preprocessor::HandlePoisonedIdentifier(Token & Identifier) {
     Diag(Identifier,it->second) << Identifier.getIdentifierInfo();
 }
 
+/// \brief Returns a diagnostic message kind for reporting a future keyword as
+/// appropriate for the identifier and specified language.
+static diag::kind getFutureCompatDiagKind(const IdentifierInfo &II,
+                                          const LangOptions &LangOpts) {
+  assert(II.isFutureCompatKeyword() && "diagnostic should not be needed");
+
+  if (LangOpts.CPlusPlus)
+    return llvm::StringSwitch<diag::kind>(II.getName())
+#define CXX11_KEYWORD(NAME, FLAGS)                                             \
+        .Case(#NAME, diag::warn_cxx11_keyword)
+#include "clang/Basic/TokenKinds.def"
+        ;
+
+  llvm_unreachable(
+      "Keyword not known to come from a newer Standard or proposed Standard");
+}
+
 /// HandleIdentifier - This callback is invoked when the lexer reads an
 /// identifier.  This callback looks up the identifier in the map and/or
 /// potentially macro expands it or turns it into a named token (like 'for').
@@ -622,8 +639,9 @@ bool Preprocessor::HandleIdentifier(Token &Identifier) {
   }
 
   // If this is a macro to be expanded, do it.
-  if (MacroDirective *MD = getMacroDirective(&II)) {
-    MacroInfo *MI = MD->getMacroInfo();
+  if (MacroDefinition MD = getMacroDefinition(&II)) {
+    auto *MI = MD.getMacroInfo();
+    assert(MI && "macro definition with no macro info?");
     if (!DisableMacroExpansion) {
       if (!Identifier.isExpandDisabled() && MI->isEnabled()) {
         // C99 6.10.3p10: If the preprocessing token immediately after the
@@ -641,15 +659,16 @@ bool Preprocessor::HandleIdentifier(Token &Identifier) {
     }
   }
 
-  // If this identifier is a keyword in C++11, produce a warning. Don't warn if
-  // we're not considering macro expansion, since this identifier might be the
-  // name of a macro.
+  // If this identifier is a keyword in a newer Standard or proposed Standard,
+  // produce a warning. Don't warn if we're not considering macro expansion,
+  // since this identifier might be the name of a macro.
   // FIXME: This warning is disabled in cases where it shouldn't be, like
   //   "#define constexpr constexpr", "int constexpr;"
-  if (II.isCXX11CompatKeyword() && !DisableMacroExpansion) {
-    Diag(Identifier, diag::warn_cxx11_keyword) << II.getName();
+  if (II.isFutureCompatKeyword() && !DisableMacroExpansion) {
+    Diag(Identifier, getFutureCompatDiagKind(II, getLangOpts()))
+        << II.getName();
     // Don't diagnose this keyword again in this translation unit.
-    II.setIsCXX11CompatKeyword(false);
+    II.setIsFutureCompatKeyword(false);
   }
 
   // C++ 2.11p2: If this is an alternative representation of a C++ operator,
@@ -748,14 +767,34 @@ void Preprocessor::LexAfterModuleImport(Token &Result) {
   // If we have a non-empty module path, load the named module.
   if (!ModuleImportPath.empty()) {
     Module *Imported = nullptr;
-    if (getLangOpts().Modules)
+    if (getLangOpts().Modules) {
       Imported = TheModuleLoader.loadModule(ModuleImportLoc,
                                             ModuleImportPath,
-                                            Module::MacrosVisible,
+                                            Module::Hidden,
                                             /*IsIncludeDirective=*/false);
+      if (Imported)
+        makeModuleVisible(Imported, ModuleImportLoc);
+    }
     if (Callbacks && (getLangOpts().Modules || getLangOpts().DebuggerSupport))
       Callbacks->moduleImport(ModuleImportLoc, ModuleImportPath, Imported);
   }
+}
+
+void Preprocessor::makeModuleVisible(Module *M, SourceLocation Loc) {
+  VisibleModules.setVisible(
+      M, Loc, [](Module *) {},
+      [&](ArrayRef<Module *> Path, Module *Conflict, StringRef Message) {
+        // FIXME: Include the path in the diagnostic.
+        // FIXME: Include the import location for the conflicting module.
+        Diag(ModuleImportLoc, diag::warn_module_conflict)
+            << Path[0]->getFullModuleName()
+            << Conflict->getFullModuleName()
+            << Message;
+      });
+
+  // Add this module to the imports list of the currently-built submodule.
+  if (!BuildingSubmoduleStack.empty() && M != BuildingSubmoduleStack.back().M)
+    BuildingSubmoduleStack.back().M->Imports.insert(M);
 }
 
 bool Preprocessor::FinishLexStringLiteral(Token &Result, std::string &String,

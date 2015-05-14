@@ -24,12 +24,29 @@ def note_defined_here : Note<"%0 defined here">;
 def warn_variables_not_in_loop_body : Warning<
   "variable%select{s| %1|s %1 and %2|s %1, %2, and %3|s %1, %2, %3, and %4}0 "
   "used in loop condition not modified in loop body">,
-  InGroup<LoopAnalysis>, DefaultIgnore;
+  InGroup<ForLoopAnalysis>, DefaultIgnore;
 def warn_redundant_loop_iteration : Warning<
   "variable %0 is %select{decremented|incremented}1 both in the loop header "
   "and in the loop body">,
-  InGroup<LoopAnalysis>, DefaultIgnore;
+  InGroup<ForLoopAnalysis>, DefaultIgnore;
 def note_loop_iteration_here : Note<"%select{decremented|incremented}0 here">;
+
+def warn_for_range_const_reference_copy : Warning<
+  "loop variable %0 "
+  "%diff{has type $ but is initialized with type $"
+  "| is initialized with a value of a different type}1,2 resulting in a copy">,
+  InGroup<RangeLoopAnalysis>, DefaultIgnore;
+def note_use_type_or_non_reference : Note<
+  "use non-reference type %0 to keep the copy or type %1 to prevent copying">;
+def warn_for_range_variable_always_copy : Warning<
+  "loop variable %0 is always a copy because the range of type %1 does not "
+  "return a reference">,
+  InGroup<RangeLoopAnalysis>, DefaultIgnore;
+def note_use_non_reference_type : Note<"use non-reference type %0">;
+def warn_for_range_copy : Warning<
+  "loop variable %0 of type %1 creates a copy from type %2">,
+  InGroup<RangeLoopAnalysis>, DefaultIgnore;
+def note_use_reference_type : Note<"use reference type %0 to prevent copying">;
 
 def warn_duplicate_enum_values : Warning<
   "element %0 has been implicitly assigned %1 which another element has "
@@ -468,6 +485,8 @@ def warn_static_main : Warning<"'main' should not be declared static">,
     InGroup<Main>;
 def err_static_main : Error<"'main' is not allowed to be declared static">;
 def err_inline_main : Error<"'main' is not allowed to be declared inline">;
+def ext_variadic_main : ExtWarn<
+  "'main' is not allowed to be declared variadic">, InGroup<Main>;
 def ext_noreturn_main : ExtWarn<
   "'main' is not allowed to be declared _Noreturn">, InGroup<Main>;
 def note_main_remove_noreturn : Note<"remove '_Noreturn'">;
@@ -731,7 +750,7 @@ def warn_accessor_property_type_mismatch : Warning<
 def not_conv_function_declared_at : Note<"type conversion function declared here">;
 def note_method_declared_at : Note<"method %0 declared here">;
 def note_property_attribute : Note<"property %0 is declared "
-  "%select{deprecated|unavailable}1 here">;
+  "%select{deprecated|unavailable|partial}1 here">;
 def err_setter_type_void : Error<"type of setter must be void">;
 def err_duplicate_method_decl : Error<"duplicate declaration of method %0">;
 def warn_duplicate_method_decl : 
@@ -893,8 +912,6 @@ def warn_receiver_is_weak : Warning <
   "weak %select{receiver|property|implicit property}0 may be "
   "unpredictably set to nil">,
   InGroup<DiagGroup<"receiver-is-weak">>, DefaultIgnore;
-def note_arc_assign_to_strong : Note<
-  "assign the value to a strong variable to keep the object alive during use">;
 def warn_arc_repeated_use_of_weak : Warning <
   "weak %select{variable|property|implicit property|instance variable}0 %1 is "
   "accessed multiple times in this %select{function|method|block|lambda}2 "
@@ -1555,7 +1572,7 @@ def warn_uninit_byref_blockvar_captured_by_block : Warning<
   "block pointer variable %0 is uninitialized when captured by block">,
   InGroup<Uninitialized>, DefaultIgnore;
 def note_block_var_fixit_add_initialization : Note<
-  "maybe you meant to use __block %0">;
+  "did you mean to use __block %0?">;
 def note_in_omitted_aggregate_initializer : Note<
   "in implicit initialization of %select{array element %1|field %1}0 "
   "with omitted initializer">;
@@ -2105,6 +2122,9 @@ def note_objc_literal_comparison_isequal : Note<
   "use 'isEqual:' instead">;
 def err_attribute_argument_is_zero : Error<
   "%0 attribute must be greater than 0">;
+def warn_attribute_argument_n_negative : Warning<
+  "%0 attribute parameter %1 is negative and will be ignored">,
+  InGroup<CudaCompat>;
 def err_property_function_in_objc_container : Error<
   "use of Objective-C property in function nested in Objective-C "
   "container not supported, move function outside its container">;
@@ -2136,6 +2156,8 @@ def error_cannot_find_suitable_accessor : Error<
 
 def err_alignment_not_power_of_two : Error<
   "requested alignment is not a power of 2">;
+def err_alignment_dependent_typedef_name : Error<
+  "requested alignment is dependent but declaration is not dependent">;
 
 def err_attribute_aligned_too_great : Error<
   "requested alignment must be %0 bytes or smaller">;
@@ -2183,6 +2205,14 @@ def warn_gc_attribute_weak_on_local : Warning<
 def warn_nsobject_attribute : Warning<
   "'NSObject' attribute may be put on a typedef only; attribute is ignored">,
   InGroup<NSobjectAttribute>;
+def warn_independentclass_attribute : Warning<
+  "'objc_independent_class' attribute may be put on a typedef only; "
+  "attribute is ignored">,
+  InGroup<IndependentClassAttribute>;
+def warn_ptr_independentclass_attribute : Warning<
+  "'objc_independent_class' attribute may be put on Objective-C object "
+  "pointer type only; attribute is ignored">,
+  InGroup<IndependentClassAttribute>;
 def warn_attribute_weak_on_local : Warning<
   "__weak attribute cannot be specified on an automatic variable when ARC "
   "is not enabled">,
@@ -2810,6 +2840,8 @@ def err_param_default_argument_member_template_redecl : Error<
   "default arguments cannot be added to an out-of-line definition of a member "
   "of a %select{class template|class template partial specialization|nested "
   "class in a template}0">;
+def err_param_default_argument_on_parameter_pack : Error<
+  "parameter pack cannot have a default argument">;
 def err_uninitialized_member_for_assign : Error<
   "cannot define the implicit copy assignment operator for %0, because "
   "non-static %select{reference|const}1 member %2 can't use copy "
@@ -3449,6 +3481,12 @@ def err_template_spec_redecl_out_of_scope : Error<
   "variable template partial|function template|member "
   "function|static data member|member class|member enumeration}0 "
   "specialization of %1 not in a namespace enclosing %2">;
+def ext_ms_template_spec_redecl_out_of_scope: ExtWarn<
+  "%select{class template|class template partial|variable template|"
+  "variable template partial|function template|member "
+  "function|static data member|member class|member enumeration}0 "
+  "specialization of %1 outside namespace enclosing %2 "
+  "is a Microsoft extension">, InGroup<Microsoft>;
 def err_template_spec_redecl_global_scope : Error<
   "%select{class template|class template partial|variable template|"
   "variable template partial|function template|member "
@@ -3795,34 +3833,14 @@ def note_template_parameter_pack_here : Note<
   "previous %select{template type|non-type template|template template}0 "
   "parameter%select{| pack}1 declared here">;
   
-def err_unexpanded_parameter_pack_0 : Error<
+def err_unexpanded_parameter_pack : Error<
   "%select{expression|base type|declaration type|data member type|bit-field "
   "size|static assertion|fixed underlying type|enumerator value|"
   "using declaration|friend declaration|qualifier|initializer|default argument|"
   "non-type template parameter type|exception type|partial specialization|"
-  "__if_exists name|__if_not_exists name|lambda|block}0 "
-  "contains an unexpanded parameter pack">;
-def err_unexpanded_parameter_pack_1 : Error<
-  "%select{expression|base type|declaration type|data member type|bit-field "
-  "size|static assertion|fixed underlying type|enumerator value|"
-  "using declaration|friend declaration|qualifier|initializer|default argument|"
-  "non-type template parameter type|exception type|partial specialization|"
-  "__if_exists name|__if_not_exists name|lambda|block}0 "
-  "contains unexpanded parameter pack %1">;
-def err_unexpanded_parameter_pack_2 : Error<
-  "%select{expression|base type|declaration type|data member type|bit-field "
-  "size|static assertion|fixed underlying type|enumerator value|"
-  "using declaration|friend declaration|qualifier|initializer|default argument|"
-  "non-type template parameter type|exception type|partial specialization|"
-  "__if_exists name|__if_not_exists name|lambda|block}0 "
-  "contains unexpanded parameter packs %1 and %2">;
-def err_unexpanded_parameter_pack_3_or_more : Error<
-  "%select{expression|base type|declaration type|data member type|bit-field "
-  "size|static assertion|fixed underlying type|enumerator value|"
-  "using declaration|friend declaration|qualifier|initializer|default argument|"
-  "non-type template parameter type|exception type|partial specialization|"
-  "__if_exists name|__if_not_exists name|lambda|block}0 "
-  "contains unexpanded parameter packs %1, %2, ...">;
+  "__if_exists name|__if_not_exists name|lambda|block}0 contains"
+  "%plural{0: an|:}1 unexpanded parameter pack"
+  "%plural{0:|1: %2|2:s %2 and %3|:s %2, %3, ...}1">;
 
 def err_pack_expansion_without_parameter_packs : Error<
   "pack expansion does not contain any unexpanded parameter packs">;
@@ -3871,6 +3889,15 @@ def err_not_found_by_two_phase_lookup : Error<"call to function %0 that is neith
 def note_not_found_by_two_phase_lookup : Note<"%0 should be declared prior to the "
     "call site%select{| or in %2| or in an associated namespace of one of its arguments}1">;
 def err_undeclared_use : Error<"use of undeclared %0">;
+def warn_partial_availability : Warning<"%0 is only available conditionally">,
+    InGroup<PartialAvailability>, DefaultIgnore;
+def note_partial_availability_silence : Note<
+  "explicitly redeclare %0 to silence this warning">;
+def warn_partial_message : Warning<"%0 is partial: %1">,
+    InGroup<PartialAvailability>, DefaultIgnore;
+def warn_partial_fwdclass_message : Warning<
+    "%0 may be partial because the receiver type is unknown">,
+    InGroup<PartialAvailability>, DefaultIgnore;
 def warn_deprecated : Warning<"%0 is deprecated">,
     InGroup<DeprecatedDeclarations>;
 def warn_property_method_deprecated :
@@ -3896,7 +3923,7 @@ def warn_unavailable_fwdclass_message : Warning<
     InGroup<UnavailableDeclarations>;
 def note_availability_specified_here : Note<
   "%0 has been explicitly marked "
-  "%select{unavailable|deleted|deprecated}1 here">;
+  "%select{unavailable|deleted|deprecated|partial}1 here">;
 def note_implicitly_deleted : Note<
   "explicitly defaulted function was implicitly deleted here">;
 def note_inherited_deleted_here : Note<
@@ -4128,8 +4155,11 @@ def err_typecheck_negative_array_size : Error<"array size is negative">;
 def warn_typecheck_negative_array_new_size : Warning<"array size is negative">,
   // FIXME PR11644: ", will throw std::bad_array_new_length at runtime"
   InGroup<BadArrayNewLength>;
-def warn_typecheck_function_qualifiers : Warning<
-  "qualifier on function type %0 has unspecified behavior">;
+def warn_typecheck_function_qualifiers_ignored : Warning<
+  "'%0' qualifier on function type %1 has no effect">,
+  InGroup<IgnoredQualifiers>;
+def warn_typecheck_function_qualifiers_unspecified : Warning<
+  "'%0' qualifier on function type %1 has unspecified behavior">;
 def warn_typecheck_reference_qualifiers : Warning<
   "'%0' qualifier on reference type %1 has no effect">,
   InGroup<IgnoredQualifiers>;
@@ -4750,6 +4780,17 @@ def warn_self_move : Warning<
   "explicitly moving variable of type %0 to itself">,
   InGroup<SelfMove>, DefaultIgnore;
 
+def warn_redundant_move_on_return : Warning<
+  "redundant move in return statement">,
+  InGroup<RedundantMove>, DefaultIgnore;
+def warn_pessimizing_move_on_return : Warning<
+  "moving a local object in a return statement prevents copy elision">,
+  InGroup<PessimizingMove>, DefaultIgnore;
+def warn_pessimizing_move_on_initialization : Warning<
+  "moving a temporary object prevents copy elision">,
+  InGroup<PessimizingMove>, DefaultIgnore;
+def note_remove_move : Note<"remove std::move call here">;
+
 def warn_string_plus_int : Warning<
   "adding %0 to a string does not append to the string">,
   InGroup<StringPlusInt>;
@@ -4805,7 +4846,7 @@ def error_arc_weak_ivar_access : Error<
 def err_typecheck_member_reference_arrow : Error<
   "member reference type %0 is not a pointer">;
 def err_typecheck_member_reference_suggestion : Error<
-  "member reference type %0 is %select{a|not a}1 pointer; maybe you meant to use '%select{->|.}1'?">;
+  "member reference type %0 is %select{a|not a}1 pointer; did you mean to use '%select{->|.}1'?">;
 def note_typecheck_member_reference_suggestion : Note<
   "did you mean to use '.' instead?">;
 def note_member_reference_arrow_from_operator_arrow : Note<
@@ -5033,7 +5074,23 @@ def err_typecheck_op_on_nonoverlapping_address_space_pointers : Error<
   "%select{comparison between %diff{ ($ and $)|}0,1"
   "|arithmetic operation with operands of type %diff{ ($ and $)|}0,1}2"
   " which are pointers to non-overlapping address spaces">;
-def err_typecheck_assign_const : Error<"read-only variable is not assignable">;
+
+def err_typecheck_assign_const : Error<
+  "%select{"
+  "cannot assign to return value because function %1 returns a const value|"
+  "cannot assign to variable %1 with const-qualified type %2|"
+  "cannot assign to %select{non-|}1static data member %2 "
+  "with const-qualified type %3|"
+  "cannot assign to non-static data member within const member function %1|"
+  "read-only variable is not assignable}0">;
+
+def note_typecheck_assign_const : Note<
+  "%select{"
+  "function %1 which returns const-qualified type %2 declared here|"
+  "variable %1 declared const here|"
+  "%select{non-|}1static data member %2 declared const here|"
+  "member function %q1 is declared const here}0">;
+
 def warn_mixed_sign_comparison : Warning<
   "comparison of integers of different signs: %0 and %1">,
   InGroup<SignCompare>, DefaultIgnore;
@@ -5263,6 +5320,10 @@ def err_objc_object_catch : Error<
   "can't catch an Objective-C object by value">;
 def err_incomplete_type_objc_at_encode : Error<
   "'@encode' of incomplete type %0">;
+def warn_objc_circular_container : Warning<
+  "adding '%0' to '%0' might cause circular dependency in container">,
+  InGroup<DiagGroup<"objc-circular-container">>;
+def note_objc_circular_container_declared_here : Note<"'%0' declared here">;
 
 def warn_setter_getter_impl_required : Warning<
   "property %0 requires method %1 to be defined - "
@@ -5428,8 +5489,11 @@ def err_address_space_qualified_delete : Error<
 def err_default_init_const : Error<
   "default initialization of an object of const type %0"
   "%select{| without a user-provided default constructor}1">;
-def note_add_initializer : Note<
-  "add an explicit initializer to initialize %0">;
+def ext_default_init_const : ExtWarn<
+  "default initialization of an object of const type %0"
+  "%select{| without a user-provided default constructor}1 "
+  "is a Microsoft extension">,
+  InGroup<Microsoft>;
 def err_delete_operand : Error<"cannot delete expression of type %0">;
 def ext_delete_void_ptr_operand : ExtWarn<
   "cannot delete expression with pointer-to-'void' type %0">,
@@ -5474,7 +5538,8 @@ def err_bad_memptr_lhs : Error<
   "left hand operand to %0 must be a %select{|pointer to }1class "
   "compatible with the right hand operand, but is %2">;
 def warn_exception_caught_by_earlier_handler : Warning<
-  "exception of type %0 will be caught by earlier handler">;
+  "exception of type %0 will be caught by earlier handler">,
+  InGroup<Exceptions>;
 def note_previous_exception_handler : Note<"for type %0">;
 def err_exceptions_disabled : Error<
   "cannot use '%0' with exceptions disabled">;
@@ -5486,6 +5551,9 @@ def err_mixing_cxx_try_seh_try : Error<
   "cannot use C++ 'try' in the same function as SEH '__try'">;
 def note_conflicting_try_here : Note<
   "conflicting %0 here">;
+def warn_jump_out_of_seh_finally : Warning<
+  "jump out of __finally block has undefined behavior">,
+  InGroup<DiagGroup<"jump-seh-finally">>;
 def warn_non_virtual_dtor : Warning<
   "%0 has virtual functions but non-virtual destructor">,
   InGroup<NonVirtualDtor>, DefaultIgnore;
@@ -6644,6 +6712,10 @@ def warn_format_conversion_argument_type_mismatch : Warning<
   "format specifies type %0 but the argument has "
   "%select{type|underlying type}2 %1">,
   InGroup<Format>;
+def warn_format_conversion_argument_type_mismatch_pedantic : Extension<
+  "format specifies type %0 but the argument has "
+  "%select{type|underlying type}2 %1">,
+  InGroup<FormatPedantic>;
 def warn_format_argument_needs_cast : Warning<
   "%select{values of type|enum values with underlying type}2 '%0' should not "
   "be used as format arguments; add an explicit cast to %1 instead">,
@@ -6852,29 +6924,18 @@ def warn_case_empty_range : Warning<"empty case range specified">;
 def warn_missing_case_for_condition :
   Warning<"no case matching constant switch condition '%0'">;
 
-def warn_def_missing_case1 : Warning<
-  "enumeration value %0 not explicitly handled in switch">,
-  InGroup<SwitchEnum>, DefaultIgnore;
-def warn_def_missing_case2 : Warning<
-  "enumeration values %0 and %1 not explicitly handled in switch">,
-  InGroup<SwitchEnum>, DefaultIgnore;
-def warn_def_missing_case3 : Warning<
-  "enumeration values %0, %1, and %2 not explicitly handled in switch">,
-  InGroup<SwitchEnum>, DefaultIgnore;
-def warn_def_missing_cases : Warning<
-  "%0 enumeration values not explicitly handled in switch: %1, %2, %3...">,
+def warn_def_missing_case : Warning<"%plural{"
+  "1:enumeration value %1 not explicitly handled in switch|"
+  "2:enumeration values %1 and %2 not explicitly handled in switch|"
+  "3:enumeration values %1, %2, and %3 not explicitly handled in switch|"
+  ":%0 enumeration values not explicitly handled in switch: %1, %2, %3...}0">,
   InGroup<SwitchEnum>, DefaultIgnore;
 
-def warn_missing_case1 : Warning<"enumeration value %0 not handled in switch">,
-  InGroup<Switch>;
-def warn_missing_case2 : Warning<
-  "enumeration values %0 and %1 not handled in switch">,
-  InGroup<Switch>;
-def warn_missing_case3 : Warning<
-  "enumeration values %0, %1, and %2 not handled in switch">,
-  InGroup<Switch>;
-def warn_missing_cases : Warning<
-  "%0 enumeration values not handled in switch: %1, %2, %3...">,
+def warn_missing_case : Warning<"%plural{"
+  "1:enumeration value %1 not handled in switch|"
+  "2:enumeration values %1 and %2 not handled in switch|"
+  "3:enumeration values %1, %2, and %3 not handled in switch|"
+  ":%0 enumeration values not handled in switch: %1, %2, %3...}0">,
   InGroup<Switch>;
 
 def warn_unannotated_fallthrough : Warning<
@@ -7045,6 +7106,17 @@ def note_neon_vector_initializer_non_portable_q : Note<
   "consider using vld1q_%0%1() to initialize a vector from memory, or "
   "vcombine_%0%1(vcreate_%0%1(), vcreate_%0%1()) to initialize from integer "
   "constants">;
+def err_systemz_invalid_tabort_code : Error<
+  "invalid transaction abort code">;
+def err_64_bit_builtin_32_bit_tgt : Error<
+  "this builtin is only available on 64-bit targets">;
+def err_ppc_builtin_only_on_pwr7 : Error<
+  "this builtin is only valid on POWER7 or later CPUs">;
+
+def err_builtin_longjmp_unsupported : Error<
+  "__builtin_longjmp is not supported for the current target">;
+def err_builtin_setjmp_unsupported : Error<
+  "__builtin_setjmp is not supported for the current target">;
 
 def err_builtin_longjmp_invalid_val : Error<
   "argument to __builtin_longjmp must be a constant 1">;
@@ -7112,8 +7184,8 @@ def ext_c99_array_usage : Extension<
 def err_c99_array_usage_cxx : Error<
   "%select{qualifier in |static |}0array size %select{||'[*] '}0is a C99 "
   "feature, not permitted in C++">;
-def err_double_requires_fp64 : Error<
-  "use of type 'double' requires cl_khr_fp64 extension to be enabled">;
+ def err_type_requires_extension : Error<
+  "use of type %0 requires %1 extension to be enabled">;
 def err_int128_unsupported : Error<
   "__int128 is not supported on this target">;
 def err_nsconsumed_attribute_mismatch : Error<
@@ -7352,8 +7424,6 @@ def note_omp_implicit_dsa : Note<
   "implicitly determined as %0">;
 def err_omp_loop_var_dsa : Error<
   "loop iteration variable in the associated loop of 'omp %1' directive may not be %0, predetermined as %2">;
-def err_omp_global_loop_var_dsa : Error<
-  "loop iteration variable in the associated loop of 'omp %1' directive may not be a variable with global storage without being explicitly marked as %0">;
 def err_omp_not_for : Error<
   "%select{statement after '#pragma omp %1' must be a for loop|"
   "expected %2 for loops after '#pragma omp %1'%select{|, but found only %4}3}0">;
@@ -7442,7 +7512,7 @@ def note_omp_referenced : Note<
 def err_omp_reduction_in_task : Error<
   "reduction variables may not be accessed in an explicit task">;
 def err_omp_reduction_id_not_compatible : Error<
-  "variable of type %0 is not valid for specified reduction operation">;
+  "variable of type %0 is not valid for specified reduction operation: unable to provide default initialization value">;
 def err_omp_prohibited_region : Error<
   "region cannot be%select{| closely}0 nested inside '%1' region"
   "%select{|; perhaps you forget to enclose 'omp %3' directive into a parallel region?|"
@@ -7478,8 +7548,15 @@ def err_omp_atomic_write_not_expression_statement : Error<
   "the statement for 'atomic write' must be an expression statement of form 'x = expr;',"
   " where x is a lvalue expression with scalar type">;
 def err_omp_atomic_update_not_expression_statement : Error<
-  "the statement for 'atomic%select{| update}0' must be an expression statement of form '++x;', '--x;', 'x++;', 'x--;', 'x binop= expr;', 'x = x binop expr' or 'x = expr binop x',"
+  "the statement for 'atomic update' must be an expression statement of form '++x;', '--x;', 'x++;', 'x--;', 'x binop= expr;', 'x = x binop expr' or 'x = expr binop x',"
   " where x is an l-value expression with scalar type">;
+def err_omp_atomic_not_expression_statement : Error<
+  "the statement for 'atomic' must be an expression statement of form '++x;', '--x;', 'x++;', 'x--;', 'x binop= expr;', 'x = x binop expr' or 'x = expr binop x',"
+  " where x is an l-value expression with scalar type">;
+def note_omp_atomic_update: Note<
+  "%select{expected an expression statement|expected built-in binary or unary operator|expected unary decrement/increment operation|"
+  "expected expression of scalar type|expected assignment expression|expected built-in binary operator|"
+  "expected one of '+', '*', '-', '/', '&', '^', '%|', '<<', or '>>' built-in operations|expected in right hand side of expression}0">;
 def err_omp_atomic_capture_not_expression_statement : Error<
   "the statement for 'atomic capture' must be an expression statement of form 'v = ++x;', 'v = --x;', 'v = x++;', 'v = x--;', 'v = x binop= expr;', 'v = x = x binop expr' or 'v = x = expr binop x',"
   " where x and v are both l-value expressions with scalar type">;
@@ -7488,6 +7565,8 @@ def err_omp_atomic_capture_not_compound_statement : Error<
   " '{v = x; x = x binop expr;}', '{v = x; x = expr binop x;}', '{x = x binop expr; v = x;}', '{x = expr binop x; v = x;}' or '{v = x; x = expr;}',"
   " '{v = x; x++;}', '{v = x; ++x;}', '{++x; v = x;}', '{x++; v = x;}', '{v = x; x--;}', '{v = x; --x;}', '{--x; v = x;}', '{x--; v = x;}'"
   " where x is an l-value expression with scalar type">;
+def note_omp_atomic_capture: Note<
+  "%select{expected assignment expression|expected compound statement|expected exactly two expression statements|expected in right hand side of the first expression}0">;
 def err_omp_atomic_several_clauses : Error<
   "directive '#pragma omp atomic' cannot contain more than one 'read', 'write', 'update' or 'capture' clause">;
 def note_omp_atomic_previous_clause : Note<

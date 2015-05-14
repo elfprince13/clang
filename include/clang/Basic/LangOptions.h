@@ -67,6 +67,13 @@ public:
 
   enum AddrSpaceMapMangling { ASMM_Target, ASMM_On, ASMM_Off };
 
+  enum MSVCMajorVersion {
+    MSVC2010 = 16,
+    MSVC2012 = 17,
+    MSVC2013 = 18,
+    MSVC2015 = 19
+  };
+
 public:
   /// \brief Set of enabled sanitizers.
   SanitizerSet Sanitize;
@@ -116,6 +123,10 @@ public:
   bool isSubscriptPointerArithmetic() const {
     return ObjCRuntime.isSubscriptPointerArithmetic() &&
            !ObjCSubscriptingLegacyRuntime;
+  }
+
+  bool isCompatibleWithMSVC(MSVCMajorVersion MajorVersion) const {
+    return MSCompatibilityVersion >= MajorVersion * 10000000U;
   }
 
   /// \brief Reset all of the options that are not considered when building a

@@ -533,7 +533,7 @@ namespace {
       : CodeCompleteConsumer(Opts, false), 
         AllocatedResults(Results), CCTUInfo(Results.CodeCompletionAllocator),
         TU(TranslationUnit) { }
-    ~CaptureCompletionResults() { Finish(); }
+    ~CaptureCompletionResults() override { Finish(); }
 
     void ProcessCodeCompleteResults(Sema &S, 
                                     CodeCompletionContext Context,
@@ -656,7 +656,7 @@ struct CodeCompleteAtInfo {
   unsigned options;
   CXCodeCompleteResults *result;
 };
-void clang_codeCompleteAt_Impl(void *UserData) {
+static void clang_codeCompleteAt_Impl(void *UserData) {
   CodeCompleteAtInfo *CCAI = static_cast<CodeCompleteAtInfo*>(UserData);
   CXTranslationUnit TU = CCAI->TU;
   const char *complete_filename = CCAI->complete_filename;

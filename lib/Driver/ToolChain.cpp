@@ -48,7 +48,7 @@ static ToolChain::RTTIMode CalculateRTTIMode(const ArgList &Args,
 
   // On the PS4, turning on c++ exceptions turns on rtti.
   // We're assuming that, if we see -fexceptions, rtti gets turned on.
-  Arg *Exceptions = Args.getLastArg(
+  Arg *Exceptions = Args.getLastArgNoClaim(
       options::OPT_fcxx_exceptions, options::OPT_fno_cxx_exceptions,
       options::OPT_fexceptions, options::OPT_fno_exceptions);
   if (Exceptions &&
@@ -297,18 +297,18 @@ std::string ToolChain::ComputeLLVMTriple(const ArgList &Args,
     // '-mbig-endian'/'-EB'.
     if (Arg *A = Args.getLastArg(options::OPT_mlittle_endian,
                                  options::OPT_mbig_endian)) {
-      if (A->getOption().matches(options::OPT_mlittle_endian))
-        IsBigEndian = false;
-      else
-        IsBigEndian = true;
+      IsBigEndian = !A->getOption().matches(options::OPT_mlittle_endian);
     }
 
     // Thumb2 is the default for V7 on Darwin.
     //
     // FIXME: Thumb should just be another -target-feaure, not in the triple.
-    StringRef Suffix = Triple.isOSBinFormatMachO()
-      ? tools::arm::getLLVMArchSuffixForARM(tools::arm::getARMCPUForMArch(Args, Triple))
-      : tools::arm::getLLVMArchSuffixForARM(tools::arm::getARMTargetCPU(Args, Triple));
+    StringRef CPU = Triple.isOSBinFormatMachO()
+      ? tools::arm::getARMCPUForMArch(Args, Triple)
+      : tools::arm::getARMTargetCPU(Args, Triple);
+    StringRef Suffix = 
+      tools::arm::getLLVMArchSuffixForARM(CPU,
+                                          tools::arm::getARMArch(Args, Triple));
     bool ThumbDefault = Suffix.startswith("v6m") || Suffix.startswith("v7m") ||
       Suffix.startswith("v7em") ||
       (Suffix.startswith("v7") && getTriple().isOSBinFormatMachO());

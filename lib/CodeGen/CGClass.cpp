@@ -540,6 +540,23 @@ static void EmitAggMemberInitializer(CodeGenFunction &CGF,
   CGF.EmitBlock(AfterFor, true);
 }
 
+static bool isMemcpyEquivalentSpecialMember(const CXXMethodDecl *D) {
+  auto *CD = dyn_cast<CXXConstructorDecl>(D);
+  if (!(CD && CD->isCopyOrMoveConstructor()) &&
+      !D->isCopyAssignmentOperator() && !D->isMoveAssignmentOperator())
+    return false;
+
+  // We can emit a memcpy for a trivial copy or move constructor/assignment.
+  if (D->isTrivial() && !D->getParent()->mayInsertExtraPadding())
+    return true;
+
+  // We *must* emit a memcpy for a defaulted union copy or move op.
+  if (D->getParent()->isUnion() && D->isDefaulted())
+    return true;
+
+  return false;
+}
+
 static void EmitMemberInitializer(CodeGenFunction &CGF,
                                   const CXXRecordDecl *ClassDecl,
                                   CXXCtorInitializer *MemberInit,
@@ -581,7 +598,7 @@ static void EmitMemberInitializer(CodeGenFunction &CGF,
     QualType BaseElementTy = CGF.getContext().getBaseElementType(Array);
     CXXConstructExpr *CE = dyn_cast<CXXConstructExpr>(MemberInit->getInit());
     if (BaseElementTy.isPODType(CGF.getContext()) ||
-        (CE && CE->getConstructor()->isTrivial())) {
+        (CE && isMemcpyEquivalentSpecialMember(CE->getConstructor()))) {
       unsigned SrcArgIndex =
           CGF.CGM.getCXXABI().getSrcArgforCopyCtor(Constructor, Args);
       llvm::Value *SrcPtr
@@ -797,8 +814,7 @@ void CodeGenFunction::EmitConstructorBody(FunctionArgList &Args) {
   if (IsTryBody)
     EnterCXXTryStmt(*cast<CXXTryStmt>(Body), true);
 
-  RegionCounter Cnt = getPGORegionCounter(Body);
-  Cnt.beginRegion(Builder);
+  incrementProfileCounter(Body);
 
   RunCleanupsScope RunCleanups(*this);
 
@@ -1022,8 +1038,8 @@ namespace {
       QualType FieldType = Field->getType();
       CXXConstructExpr *CE = dyn_cast<CXXConstructExpr>(MemberInit->getInit());
 
-      // Bail out on non-POD, not-trivially-constructable members.
-      if (!(CE && CE->getConstructor()->isTrivial()) &&
+      // Bail out on non-memcpyable, not-trivially-copyable members.
+      if (!(CE && isMemcpyEquivalentSpecialMember(CE->getConstructor())) &&
           !(FieldType.isTriviallyCopyableType(CGF.getContext()) ||
             FieldType->isReferenceType()))
         return false;
@@ -1128,9 +1144,7 @@ namespace {
         return Field;
       } else if (CXXMemberCallExpr *MCE = dyn_cast<CXXMemberCallExpr>(S)) {
         CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(MCE->getCalleeDecl());
-        if (!(MD && (MD->isCopyAssignmentOperator() ||
-                       MD->isMoveAssignmentOperator()) &&
-              MD->isTrivial()))
+        if (!(MD && isMemcpyEquivalentSpecialMember(MD)))
           return nullptr;
         MemberExpr *IOA = dyn_cast<MemberExpr>(MCE->getImplicitObjectArgument());
         if (!IOA)
@@ -1404,8 +1418,7 @@ void CodeGenFunction::EmitDestructorBody(FunctionArgList &Args) {
   case Dtor_Base:
     assert(Body);
 
-    RegionCounter Cnt = getPGORegionCounter(Body);
-    Cnt.beginRegion(Builder);
+    incrementProfileCounter(Body);
 
     // Enter the cleanup scopes for fields and non-virtual bases.
     EnterDtorCleanups(Dtor, Dtor_Base);
@@ -1734,18 +1747,23 @@ void CodeGenFunction::EmitCXXConstructorCall(const CXXConstructorDecl *D,
                                              bool ForVirtualBase,
                                              bool Delegating, llvm::Value *This,
                                              const CXXConstructExpr *E) {
-  // If this is a trivial constructor, just emit what's needed.
-  if (D->isTrivial() && !D->getParent()->mayInsertExtraPadding()) {
-    if (E->getNumArgs() == 0) {
-      // Trivial default constructor, no codegen required.
-      assert(D->isDefaultConstructor() &&
-             "trivial 0-arg ctor not a default ctor");
-      return;
-    }
+  // C++11 [class.mfct.non-static]p2:
+  //   If a non-static member function of a class X is called for an object that
+  //   is not of type X, or of a type derived from X, the behavior is undefined.
+  // FIXME: Provide a source location here.
+  EmitTypeCheck(CodeGenFunction::TCK_ConstructorCall, SourceLocation(), This,
+                getContext().getRecordType(D->getParent()));
 
+  if (D->isTrivial() && D->isDefaultConstructor()) {
+    assert(E->getNumArgs() == 0 && "trivial default ctor with args");
+    return;
+  }
+
+  // If this is a trivial constructor, just emit what's needed. If this is a
+  // union copy constructor, we must emit a memcpy, because the AST does not
+  // model that copy.
+  if (isMemcpyEquivalentSpecialMember(D)) {
     assert(E->getNumArgs() == 1 && "unexpected argcount for trivial ctor");
-    assert(D->isCopyOrMoveConstructor() &&
-           "trivial 1-arg ctor not a copy/move ctor");
 
     const Expr *Arg = E->getArg(0);
     QualType SrcTy = Arg->getType();
@@ -1754,13 +1772,6 @@ void CodeGenFunction::EmitCXXConstructorCall(const CXXConstructorDecl *D,
     EmitAggregateCopyCtor(This, Src, DestTy, SrcTy);
     return;
   }
-
-  // C++11 [class.mfct.non-static]p2:
-  //   If a non-static member function of a class X is called for an object that
-  //   is not of type X, or of a type derived from X, the behavior is undefined.
-  // FIXME: Provide a source location here.
-  EmitTypeCheck(CodeGenFunction::TCK_ConstructorCall, SourceLocation(), This,
-                getContext().getRecordType(D->getParent()));
 
   CallArgList Args;
 
@@ -1786,8 +1797,7 @@ void
 CodeGenFunction::EmitSynthesizedCXXCopyCtorCall(const CXXConstructorDecl *D,
                                         llvm::Value *This, llvm::Value *Src,
                                         const CXXConstructExpr *E) {
-  if (D->isTrivial() &&
-      !D->getParent()->mayInsertExtraPadding()) {
+  if (isMemcpyEquivalentSpecialMember(D)) {
     assert(E->getNumArgs() == 1 && "unexpected argcount for trivial ctor");
     assert(D->isCopyOrMoveConstructor() &&
            "trivial 1-arg ctor not a copy/move ctor");
@@ -2088,12 +2098,102 @@ llvm::Value *CodeGenFunction::GetVTablePtr(llvm::Value *This,
   return VTable;
 }
 
+// If a class has a single non-virtual base and does not introduce or override
+// virtual member functions or fields, it will have the same layout as its base.
+// This function returns the least derived such class.
+//
+// Casting an instance of a base class to such a derived class is technically
+// undefined behavior, but it is a relatively common hack for introducing member
+// functions on class instances with specific properties (e.g. llvm::Operator)
+// that works under most compilers and should not have security implications, so
+// we allow it by default. It can be disabled with -fsanitize=cfi-cast-strict.
+static const CXXRecordDecl *
+LeastDerivedClassWithSameLayout(const CXXRecordDecl *RD) {
+  if (!RD->field_empty())
+    return RD;
+
+  if (RD->getNumVBases() != 0)
+    return RD;
+
+  if (RD->getNumBases() != 1)
+    return RD;
+
+  for (const CXXMethodDecl *MD : RD->methods()) {
+    if (MD->isVirtual()) {
+      // Virtual member functions are only ok if they are implicit destructors
+      // because the implicit destructor will have the same semantics as the
+      // base class's destructor if no fields are added.
+      if (isa<CXXDestructorDecl>(MD) && MD->isImplicit())
+        continue;
+      return RD;
+    }
+  }
+
+  return LeastDerivedClassWithSameLayout(
+      RD->bases_begin()->getType()->getAsCXXRecordDecl());
+}
+
 void CodeGenFunction::EmitVTablePtrCheckForCall(const CXXMethodDecl *MD,
                                                 llvm::Value *VTable) {
-  if (!SanOpts.has(SanitizerKind::CFIVptr))
+  const CXXRecordDecl *ClassDecl = MD->getParent();
+  if (!SanOpts.has(SanitizerKind::CFICastStrict))
+    ClassDecl = LeastDerivedClassWithSameLayout(ClassDecl);
+
+  EmitVTablePtrCheck(ClassDecl, VTable);
+}
+
+void CodeGenFunction::EmitVTablePtrCheckForCast(QualType T,
+                                                llvm::Value *Derived,
+                                                bool MayBeNull) {
+  if (!getLangOpts().CPlusPlus)
     return;
 
-  const CXXRecordDecl *RD = MD->getParent();
+  auto *ClassTy = T->getAs<RecordType>();
+  if (!ClassTy)
+    return;
+
+  const CXXRecordDecl *ClassDecl = cast<CXXRecordDecl>(ClassTy->getDecl());
+
+  if (!ClassDecl->isCompleteDefinition() || !ClassDecl->isDynamicClass())
+    return;
+
+  SmallString<64> MangledName;
+  llvm::raw_svector_ostream Out(MangledName);
+  CGM.getCXXABI().getMangleContext().mangleCXXRTTI(T.getUnqualifiedType(),
+                                                   Out);
+
+  // Blacklist based on the mangled type.
+  if (CGM.getContext().getSanitizerBlacklist().isBlacklistedType(Out.str()))
+    return;
+
+  if (!SanOpts.has(SanitizerKind::CFICastStrict))
+    ClassDecl = LeastDerivedClassWithSameLayout(ClassDecl);
+
+  llvm::BasicBlock *ContBlock = 0;
+
+  if (MayBeNull) {
+    llvm::Value *DerivedNotNull =
+        Builder.CreateIsNotNull(Derived, "cast.nonnull");
+
+    llvm::BasicBlock *CheckBlock = createBasicBlock("cast.check");
+    ContBlock = createBasicBlock("cast.cont");
+
+    Builder.CreateCondBr(DerivedNotNull, CheckBlock, ContBlock);
+
+    EmitBlock(CheckBlock);
+  }
+
+  llvm::Value *VTable = GetVTablePtr(Derived, Int8PtrTy);
+  EmitVTablePtrCheck(ClassDecl, VTable);
+
+  if (MayBeNull) {
+    Builder.CreateBr(ContBlock);
+    EmitBlock(ContBlock);
+  }
+}
+
+void CodeGenFunction::EmitVTablePtrCheck(const CXXRecordDecl *RD,
+                                         llvm::Value *VTable) {
   // FIXME: Add blacklisting scheme.
   if (RD->isInStdNamespace())
     return;

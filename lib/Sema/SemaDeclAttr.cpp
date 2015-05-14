@@ -51,6 +51,11 @@ namespace AttributeLangSupport {
 static bool isFunctionOrMethod(const Decl *D) {
   return (D->getFunctionType() != nullptr) || isa<ObjCMethodDecl>(D);
 }
+/// \brief Return true if the given decl has function type (function or
+/// function-typed variable) or an Objective-C method or a block.
+static bool isFunctionOrMethodOrBlock(const Decl *D) {
+  return isFunctionOrMethod(D) || isa<BlockDecl>(D);
+}
 
 /// Return true if the given decl has a declarator that should have
 /// been processed by Sema::GetTypeForDeclarator.
@@ -257,7 +262,7 @@ static bool checkFunctionOrMethodParameterIndex(Sema &S, const Decl *D,
                                                 unsigned AttrArgNum,
                                                 const Expr *IdxExpr,
                                                 uint64_t &Idx) {
-  assert(isFunctionOrMethod(D));
+  assert(isFunctionOrMethodOrBlock(D));
 
   // In C++ the implicit 'this' function parameter also counts.
   // Parameters are counted from one.
@@ -1601,7 +1606,7 @@ static void handleAnalyzerNoReturnAttr(Sema &S, Decl *D,
   
   // The checking path for 'noreturn' and 'analyzer_noreturn' are different
   // because 'analyzer_noreturn' does not impact the type.
-  if (!isFunctionOrMethod(D) && !isa<BlockDecl>(D)) {
+  if (!isFunctionOrMethodOrBlock(D)) {
     ValueDecl *VD = dyn_cast<ValueDecl>(D);
     if (!VD || (!VD->getType()->isBlockPointerType() &&
                 !VD->getType()->isFunctionPointerType())) {
@@ -2117,6 +2122,22 @@ static void handleObjCNSObject(Sema &S, Decl *D, const AttributeList &Attr) {
                               Attr.getAttributeSpellingListIndex()));
 }
 
+static void handleObjCIndependentClass(Sema &S, Decl *D, const AttributeList &Attr) {
+  if (TypedefNameDecl *TD = dyn_cast<TypedefNameDecl>(D)) {
+    QualType T = TD->getUnderlyingType();
+    if (!T->isObjCObjectPointerType()) {
+      S.Diag(TD->getLocation(), diag::warn_ptr_independentclass_attribute);
+      return;
+    }
+  } else {
+    S.Diag(D->getLocation(), diag::warn_independentclass_attribute);
+    return;
+  }
+  D->addAttr(::new (S.Context)
+             ObjCIndependentClassAttr(Attr.getRange(), S.Context,
+                              Attr.getAttributeSpellingListIndex()));
+}
+
 static void handleBlocksAttr(Sema &S, Decl *D, const AttributeList &Attr) {
   if (!Attr.isArgIdent(0)) {
     S.Diag(Attr.getLoc(), diag::err_attribute_argument_n_type)
@@ -2342,12 +2363,24 @@ SectionAttr *Sema::mergeSectionAttr(Decl *D, SourceRange Range,
                                      AttrSpellingListIndex);
 }
 
+bool Sema::checkSectionName(SourceLocation LiteralLoc, StringRef SecName) {
+  std::string Error = Context.getTargetInfo().isValidSectionSpecifier(SecName);
+  if (!Error.empty()) {
+    Diag(LiteralLoc, diag::err_attribute_section_invalid_for_target) << Error;
+    return false;
+  }
+  return true;
+}
+
 static void handleSectionAttr(Sema &S, Decl *D, const AttributeList &Attr) {
   // Make sure that there is a string literal as the sections's single
   // argument.
   StringRef Str;
   SourceLocation LiteralLoc;
   if (!S.checkStringLiteralArgumentAttr(Attr, 0, Str, &LiteralLoc))
+    return;
+
+  if (!S.checkSectionName(LiteralLoc, Str))
     return;
 
   // If the target wants to validate the section specifier, make it happen.
@@ -2850,6 +2883,16 @@ static void handleAlignedAttr(Sema &S, Decl *D, const AttributeList &Attr) {
 
   if (!Attr.isPackExpansion() && S.DiagnoseUnexpandedParameterPack(E))
     return;
+
+  if (E->isValueDependent()) {
+    if (const auto *TND = dyn_cast<TypedefNameDecl>(D)) {
+      if (!TND->getUnderlyingType()->isDependentType()) {
+        S.Diag(Attr.getLoc(), diag::err_alignment_dependent_typedef_name)
+            << E->getSourceRange();
+        return;
+      }
+    }
+  }
 
   S.AddAlignedAttr(Attr.getRange(), D, E, Attr.getAttributeSpellingListIndex(),
                    Attr.isPackExpansion());
@@ -3393,9 +3436,12 @@ bool Sema::CheckCallingConvAttr(const AttributeList &attr, CallingConv &CC,
 
   const TargetInfo &TI = Context.getTargetInfo();
   TargetInfo::CallingConvCheckResult A = TI.checkCallingConvention(CC);
-  if (A == TargetInfo::CCCR_Warning) {
-    Diag(attr.getLoc(), diag::warn_cconv_ignored) << attr.getName();
+  if (A != TargetInfo::CCCR_OK) {
+    if (A == TargetInfo::CCCR_Warning)
+      Diag(attr.getLoc(), diag::warn_cconv_ignored) << attr.getName();
 
+    // This convention is not valid for the target. Use the default function or
+    // method calling convention.
     TargetInfo::CallingConvMethodType MT = TargetInfo::CCMT_Unknown;
     if (FD)
       MT = FD->isCXXInstanceMember() ? TargetInfo::CCMT_Member : 
@@ -3442,20 +3488,63 @@ bool Sema::CheckRegparmAttr(const AttributeList &Attr, unsigned &numParams) {
   return false;
 }
 
-static void handleLaunchBoundsAttr(Sema &S, Decl *D,
-                                   const AttributeList &Attr) {
-  uint32_t MaxThreads, MinBlocks = 0;
-  if (!checkUInt32Argument(S, Attr, Attr.getArgAsExpr(0), MaxThreads, 1))
-    return;
-  if (Attr.getNumArgs() > 1 && !checkUInt32Argument(S, Attr,
-                                                    Attr.getArgAsExpr(1),
-                                                    MinBlocks, 2))
+// Checks whether an argument of launch_bounds attribute is acceptable
+// May output an error.
+static bool checkLaunchBoundsArgument(Sema &S, Expr *E,
+                                      const CUDALaunchBoundsAttr &Attr,
+                                      const unsigned Idx) {
+
+  if (S.DiagnoseUnexpandedParameterPack(E))
+    return false;
+
+  // Accept template arguments for now as they depend on something else.
+  // We'll get to check them when they eventually get instantiated.
+  if (E->isValueDependent())
+    return true;
+
+  llvm::APSInt I(64);
+  if (!E->isIntegerConstantExpr(I, S.Context)) {
+    S.Diag(E->getExprLoc(), diag::err_attribute_argument_n_type)
+        << &Attr << Idx << AANT_ArgumentIntegerConstant << E->getSourceRange();
+    return false;
+  }
+  // Make sure we can fit it in 32 bits.
+  if (!I.isIntN(32)) {
+    S.Diag(E->getExprLoc(), diag::err_ice_too_large) << I.toString(10, false)
+                                                     << 32 << /* Unsigned */ 1;
+    return false;
+  }
+  if (I < 0)
+    S.Diag(E->getExprLoc(), diag::warn_attribute_argument_n_negative)
+        << &Attr << Idx << E->getSourceRange();
+
+  return true;
+}
+
+void Sema::AddLaunchBoundsAttr(SourceRange AttrRange, Decl *D, Expr *MaxThreads,
+                               Expr *MinBlocks, unsigned SpellingListIndex) {
+  CUDALaunchBoundsAttr TmpAttr(AttrRange, Context, MaxThreads, MinBlocks,
+                               SpellingListIndex);
+
+  if (!checkLaunchBoundsArgument(*this, MaxThreads, TmpAttr, 0))
     return;
 
-  D->addAttr(::new (S.Context)
-              CUDALaunchBoundsAttr(Attr.getRange(), S.Context,
-                                  MaxThreads, MinBlocks,
-                                  Attr.getAttributeSpellingListIndex()));
+  if (MinBlocks && !checkLaunchBoundsArgument(*this, MinBlocks, TmpAttr, 1))
+    return;
+
+  D->addAttr(::new (Context) CUDALaunchBoundsAttr(
+      AttrRange, Context, MaxThreads, MinBlocks, SpellingListIndex));
+}
+
+static void handleLaunchBoundsAttr(Sema &S, Decl *D,
+                                   const AttributeList &Attr) {
+  if (!checkAttributeAtLeastNumArgs(S, Attr, 1) ||
+      !checkAttributeAtMostNumArgs(S, Attr, 2))
+    return;
+
+  S.AddLaunchBoundsAttr(Attr.getRange(), D, Attr.getArgAsExpr(0),
+                        Attr.getNumArgs() > 1 ? Attr.getArgAsExpr(1) : nullptr,
+                        Attr.getAttributeSpellingListIndex());
 }
 
 static void handleArgumentWithTypeTagAttr(Sema &S, Decl *D,
@@ -4648,6 +4737,9 @@ static void ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D,
   case AttributeList::AT_ObjCNSObject:
     handleObjCNSObject(S, D, Attr);
     break;
+  case AttributeList::AT_ObjCIndependentClass:
+    handleObjCIndependentClass(S, D, Attr);
+    break;
   case AttributeList::AT_Blocks:
     handleBlocksAttr(S, D, Attr);
     break;
@@ -5004,8 +5096,7 @@ void Sema::ProcessPragmaWeak(Scope *S, Decl *D) {
         ND = FD;
     if (ND) {
       if (IdentifierInfo *Id = ND->getIdentifier()) {
-        llvm::DenseMap<IdentifierInfo*,WeakInfo>::iterator I
-          = WeakUndeclaredIdentifiers.find(Id);
+        auto I = WeakUndeclaredIdentifiers.find(Id);
         if (I != WeakUndeclaredIdentifiers.end()) {
           WeakInfo W = I->second;
           DeclApplyPragmaWeak(S, ND, W);
@@ -5102,7 +5193,7 @@ static bool isDeclUnavailable(Decl *D) {
   return false;
 }
 
-static void DoEmitAvailabilityWarning(Sema &S, DelayedDiagnostic::DDKind K,
+static void DoEmitAvailabilityWarning(Sema &S, Sema::AvailabilityDiagnostic K,
                                       Decl *Ctx, const NamedDecl *D,
                                       StringRef Message, SourceLocation Loc,
                                       const ObjCInterfaceDecl *UnknownObjCClass,
@@ -5119,8 +5210,8 @@ static void DoEmitAvailabilityWarning(Sema &S, DelayedDiagnostic::DDKind K,
 
   // Don't warn if our current context is deprecated or unavailable.
   switch (K) {
-  case DelayedDiagnostic::Deprecation:
-    if (isDeclDeprecated(Ctx))
+  case Sema::AD_Deprecation:
+    if (isDeclDeprecated(Ctx) || isDeclUnavailable(Ctx))
       return;
     diag = !ObjCPropertyAccess ? diag::warn_deprecated
                                : diag::warn_property_method_deprecated;
@@ -5130,7 +5221,7 @@ static void DoEmitAvailabilityWarning(Sema &S, DelayedDiagnostic::DDKind K,
     available_here_select_kind = /* deprecated */ 2;
     break;
 
-  case DelayedDiagnostic::Unavailable:
+  case Sema::AD_Unavailable:
     if (isDeclUnavailable(Ctx))
       return;
     diag = !ObjCPropertyAccess ? diag::err_unavailable
@@ -5141,8 +5232,13 @@ static void DoEmitAvailabilityWarning(Sema &S, DelayedDiagnostic::DDKind K,
     available_here_select_kind = /* unavailable */ 0;
     break;
 
-  default:
-    llvm_unreachable("Neither a deprecation or unavailable kind");
+  case Sema::AD_Partial:
+    diag = diag::warn_partial_availability;
+    diag_message = diag::warn_partial_message;
+    diag_fwdclass_message = diag::warn_partial_fwdclass_message;
+    property_note_select = /* partial */ 2;
+    available_here_select_kind = /* partial */ 3;
+    break;
   }
 
   if (!Message.empty()) {
@@ -5162,15 +5258,21 @@ static void DoEmitAvailabilityWarning(Sema &S, DelayedDiagnostic::DDKind K,
 
   S.Diag(D->getLocation(), diag::note_availability_specified_here)
       << D << available_here_select_kind;
+  if (K == Sema::AD_Partial)
+    S.Diag(Loc, diag::note_partial_availability_silence) << D;
 }
 
 static void handleDelayedAvailabilityCheck(Sema &S, DelayedDiagnostic &DD,
                                            Decl *Ctx) {
+  assert(DD.Kind == DelayedDiagnostic::Deprecation ||
+         DD.Kind == DelayedDiagnostic::Unavailable);
+  Sema::AvailabilityDiagnostic AD = DD.Kind == DelayedDiagnostic::Deprecation
+                                        ? Sema::AD_Deprecation
+                                        : Sema::AD_Unavailable;
   DD.Triggered = true;
-  DoEmitAvailabilityWarning(S, (DelayedDiagnostic::DDKind)DD.Kind, Ctx,
-                            DD.getDeprecationDecl(), DD.getDeprecationMessage(),
-                            DD.Loc, DD.getUnknownObjCClass(),
-                            DD.getObjCProperty(), false);
+  DoEmitAvailabilityWarning(
+      S, AD, Ctx, DD.getDeprecationDecl(), DD.getDeprecationMessage(), DD.Loc,
+      DD.getUnknownObjCClass(), DD.getObjCProperty(), false);
 }
 
 void Sema::PopParsingDeclaration(ParsingDeclState state, Decl *decl) {
@@ -5236,7 +5338,7 @@ void Sema::EmitAvailabilityWarning(AvailabilityDiagnostic AD,
                                    const ObjCPropertyDecl  *ObjCProperty,
                                    bool ObjCPropertyAccess) {
   // Delay if we're currently parsing a declaration.
-  if (DelayedDiagnostics.shouldDelayDiagnostics()) {
+  if (DelayedDiagnostics.shouldDelayDiagnostics() && AD != AD_Partial) {
     DelayedDiagnostics.add(DelayedDiagnostic::makeAvailability(
         AD, Loc, D, UnknownObjCClass, ObjCProperty, Message,
         ObjCPropertyAccess));
@@ -5244,16 +5346,6 @@ void Sema::EmitAvailabilityWarning(AvailabilityDiagnostic AD,
   }
 
   Decl *Ctx = cast<Decl>(getCurLexicalContext());
-  DelayedDiagnostic::DDKind K;
-  switch (AD) {
-    case AD_Deprecation:
-      K = DelayedDiagnostic::Deprecation;
-      break;
-    case AD_Unavailable:
-      K = DelayedDiagnostic::Unavailable;
-      break;
-  }
-
-  DoEmitAvailabilityWarning(*this, K, Ctx, D, Message, Loc,
-                            UnknownObjCClass, ObjCProperty, ObjCPropertyAccess);
+  DoEmitAvailabilityWarning(*this, AD, Ctx, D, Message, Loc, UnknownObjCClass,
+                            ObjCProperty, ObjCPropertyAccess);
 }

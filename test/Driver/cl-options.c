@@ -30,6 +30,24 @@
 // EP: "-P"
 // EP: "-o" "-"
 
+// RUN: %clang_cl /fp:fast /fp:except -### -- %s 2>&1 | FileCheck -check-prefix=fpexcept %s
+// fpexcept-NOT: -menable-unsafe-fp-math
+
+// RUN: %clang_cl /fp:fast /fp:except /fp:except- -### -- %s 2>&1 | FileCheck -check-prefix=fpexcept_ %s
+// fpexcept_: -menable-unsafe-fp-math
+
+// RUN: %clang_cl /fp:precise /fp:fast -### -- %s 2>&1 | FileCheck -check-prefix=fpfast %s
+// fpfast: -menable-unsafe-fp-math
+// fpfast: -ffast-math
+
+// RUN: %clang_cl /fp:fast /fp:precise -### -- %s 2>&1 | FileCheck -check-prefix=fpprecise %s
+// fpprecise-NOT: -menable-unsafe-fp-math
+// fpprecise-NOT: -ffast-math
+
+// RUN: %clang_cl /fp:fast /fp:strict -### -- %s 2>&1 | FileCheck -check-prefix=fpstrict %s
+// fpstrict-NOT: -menable-unsafe-fp-math
+// fpstrict-NOT: -ffast-math
+
 // RTTI is on by default; just check that we don't error.
 // RUN: %clang_cl /Zs /GR -- %s 2>&1
 
@@ -90,6 +108,12 @@
 
 // RUN: %clang_cl /Oy- -### -- %s 2>&1 | FileCheck -check-prefix=Oy_ %s
 // Oy_: -mdisable-fp-elim
+
+// RUN: %clang_cl /Qvec -### -- %s 2>&1 | FileCheck -check-prefix=Qvec %s
+// Qvec: -vectorize-loops
+
+// RUN: %clang_cl /Qvec /Qvec- -### -- %s 2>&1 | FileCheck -check-prefix=Qvec_ %s
+// Qvec_-NOT: -vectorize-loops
 
 // RUN: %clang_cl /showIncludes -### -- %s 2>&1 | FileCheck -check-prefix=showIncludes %s
 // showIncludes: --show-includes
@@ -183,13 +207,13 @@
 // Wno: "-Wno-deprecated-declarations"
 
 // Ignored options. Check that we don't get "unused during compilation" errors.
-// (/Zs is for syntax-only)
-// RUN: %clang_cl /Zs \
+// RUN: %clang_cl /c \
 // RUN:    /analyze- \
 // RUN:    /cgthreads4 \
 // RUN:    /cgthreads8 \
 // RUN:    /d2Zi+ \
 // RUN:    /errorReport:foo \
+// RUN:    /Fdfoo \
 // RUN:    /FS \
 // RUN:    /Gd \
 // RUN:    /GF \
@@ -198,6 +222,7 @@
 // RUN:    /nologo \
 // RUN:    /Ob1 \
 // RUN:    /Ob2 \
+// RUN:    /openmp- \
 // RUN:    /RTC1 \
 // RUN:    /sdl \
 // RUN:    /sdl- \
@@ -210,6 +235,8 @@
 // RUN:    -### -- %s 2>&1 | FileCheck -check-prefix=IGNORED %s
 // IGNORED-NOT: argument unused during compilation
 // IGNORED-NOT: no such file or directory
+// Don't confuse /openmp- with the /o flag:
+// IGNORED-NOT: "-o" "penmp-.obj"
 
 // Ignored options and compile-only options are ignored for link jobs.
 // RUN: touch %t.obj
@@ -237,11 +264,9 @@
 // RUN:     /FAu \
 // RUN:     /favor:blend \
 // RUN:     /FC \
-// RUN:     /Fdfoo \
 // RUN:     /Fifoo \
 // RUN:     /Fmfoo \
 // RUN:     /FpDebug\main.pch \
-// RUN:     /fp:precise \
 // RUN:     /Frfoo \
 // RUN:     /FRfoo \
 // RUN:     /FU foo \
@@ -315,17 +340,32 @@
 // RTTI-NOT: "-fno-rtti-data"
 // RTTI-NOT: "-fno-rtti"
 
+// thread safe statics are off for versions < 19.
+// RUN: %clang_cl /c -### -- %s 2>&1 | FileCheck -check-prefix=NoThreadSafeStatics %s
+// RUN: %clang_cl /Zc:threadSafeInit /Zc:threadSafeInit- /c -### -- %s 2>&1 | FileCheck -check-prefix=NoThreadSafeStatics %s
+// NoThreadSafeStatics: "-fno-threadsafe-statics"
+
+// RUN: %clang_cl /Zc:threadSafeInit /c -### -- %s 2>&1 | FileCheck -check-prefix=ThreadSafeStatics %s
+// ThreadSafeStatics-NOT: "-fno-threadsafe-statics"
+
 // Accept "core" clang options.
-// (/Zs is for syntax-only)
+// (/Zs is for syntax-only, -Werror makes it fail hard on unknown options)
 // RUN: %clang_cl \
 // RUN:     --driver-mode=cl \
+// RUN:     -fcolor-diagnostics \
+// RUN:     -fno-color-diagnostics \
+// RUN:     -fdiagnostics-color \
+// RUN:     -fno-diagnostics-color \
+// RUN:     -fdiagnostics-parseable-fixits \
 // RUN:     -ferror-limit=10 \
 // RUN:     -fmsc-version=1800 \
 // RUN:     -fno-strict-aliasing \
 // RUN:     -fstrict-aliasing \
+// RUN:     -fsyntax-only \
 // RUN:     -mllvm -disable-llvm-optzns \
-// RUN:     -Wunused-variables \
-// RUN:     /Zs -- %s 2>&1
+// RUN:     -Wunused-variable \
+// RUN:     -fmacro-backtrace-limit=0 \
+// RUN:     -Werror /Zs -- %s 2>&1
 
 
 void f() { }

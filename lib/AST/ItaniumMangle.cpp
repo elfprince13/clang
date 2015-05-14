@@ -166,6 +166,8 @@ public:
                                      raw_ostream &Out) override;
   void mangleSEHFilterExpression(const NamedDecl *EnclosingDecl,
                                  raw_ostream &Out) override;
+  void mangleSEHFinallyBlock(const NamedDecl *EnclosingDecl,
+                             raw_ostream &Out) override;
   void mangleItaniumThreadLocalInit(const VarDecl *D, raw_ostream &) override;
   void mangleItaniumThreadLocalWrapper(const VarDecl *D,
                                        raw_ostream &) override;
@@ -1034,7 +1036,7 @@ void CXXNameMangler::mangleUnqualifiedName(const NamedDecl *ND,
     Str += llvm::utostr(AnonStructId);
 
     Out << Str.size();
-    Out << Str.str();
+    Out << Str;
     break;
   }
 
@@ -2309,6 +2311,7 @@ void CXXNameMangler::mangleAArch64NeonVectorType(const VectorType *T) {
       EltName = "Poly16";
       break;
     case BuiltinType::ULong:
+    case BuiltinType::ULongLong:
       EltName = "Poly64";
       break;
     default:
@@ -2673,7 +2676,6 @@ recurse:
   // These all can only appear in local or variable-initialization
   // contexts and so should never appear in a mangling.
   case Expr::AddrLabelExprClass:
-  case Expr::DesignatedInitExprClass:
   case Expr::ImplicitValueInitExprClass:
   case Expr::ParenListExprClass:
   case Expr::LambdaExprClass:
@@ -2685,6 +2687,7 @@ recurse:
   case Expr::BlockExprClass:
   case Expr::ChooseExprClass:
   case Expr::CompoundLiteralExprClass:
+  case Expr::DesignatedInitExprClass:
   case Expr::ExtVectorElementExprClass:
   case Expr::GenericSelectionExprClass:
   case Expr::ObjCEncodeExprClass:
@@ -3442,6 +3445,9 @@ void CXXNameMangler::mangleCXXCtorType(CXXCtorType T) {
   case Ctor_Comdat:
     Out << "C5";
     break;
+  case Ctor_DefaultClosure:
+  case Ctor_CopyingClosure:
+    llvm_unreachable("closure constructors don't exist for the Itanium ABI!");
   }
 }
 
@@ -3958,6 +3964,16 @@ void ItaniumMangleContextImpl::mangleSEHFilterExpression(
     const NamedDecl *EnclosingDecl, raw_ostream &Out) {
   CXXNameMangler Mangler(*this, Out);
   Mangler.getStream() << "__filt_";
+  if (shouldMangleDeclName(EnclosingDecl))
+    Mangler.mangle(EnclosingDecl);
+  else
+    Mangler.getStream() << EnclosingDecl->getName();
+}
+
+void ItaniumMangleContextImpl::mangleSEHFinallyBlock(
+    const NamedDecl *EnclosingDecl, raw_ostream &Out) {
+  CXXNameMangler Mangler(*this, Out);
+  Mangler.getStream() << "__fin_";
   if (shouldMangleDeclName(EnclosingDecl))
     Mangler.mangle(EnclosingDecl);
   else
