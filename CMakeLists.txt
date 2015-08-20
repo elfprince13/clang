@@ -96,6 +96,7 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
 
   option(LLVM_FORCE_USE_OLD_HOST_TOOLCHAIN
     "Set to ON to force using an old, unsupported host toolchain." OFF)
+  option(CLANG_ENABLE_BOOTSTRAP "Generate the clang bootstrap target" OFF)
 
   include(AddLLVM)
   include(TableGen)
@@ -167,7 +168,7 @@ else()
   set(BACKEND_PACKAGE_STRING "${PACKAGE_STRING}")
 endif()
 
-find_package(LibXml2)
+find_package(LibXml2 2.5.3 QUIET)
 if (LIBXML2_FOUND)
   set(CLANG_HAVE_LIBXML 1)
 endif()
@@ -181,6 +182,9 @@ set(C_INCLUDE_DIRS "" CACHE STRING
 set(GCC_INSTALL_PREFIX "" CACHE PATH "Directory where gcc is installed." )
 set(DEFAULT_SYSROOT "" CACHE PATH
   "Default <path> to all compiler invocations for --sysroot=<path>." )
+
+set(CLANG_DEFAULT_OPENMP_RUNTIME "libgomp" CACHE STRING
+  "Default OpenMP runtime used by -fopenmp.")
 
 set(CLANG_VENDOR "" CACHE STRING
   "Vendor-specific text for showing with version information.")
@@ -249,7 +253,10 @@ configure_file(
 
 # Add appropriate flags for GCC
 if (LLVM_COMPILER_IS_GCC_COMPATIBLE)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-common -Woverloaded-virtual -fno-strict-aliasing")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-common -Woverloaded-virtual")
+  if (NOT "${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-strict-aliasing")
+  endif ()
 
   # Enable -pedantic for Clang even if it's not enabled for LLVM.
   if (NOT LLVM_ENABLE_PEDANTIC)
@@ -317,6 +324,17 @@ function(clang_tablegen)
   endif()
 endfunction(clang_tablegen)
 
+macro(set_clang_windows_version_resource_properties name)
+  if(DEFINED windows_resource_file)
+    set_windows_version_resource_properties(${name} ${windows_resource_file}
+      VERSION_MAJOR ${CLANG_VERSION_MAJOR}
+      VERSION_MINOR ${CLANG_VERSION_MINOR}
+      VERSION_PATCHLEVEL ${CLANG_VERSION_PATCHLEVEL}
+      VERSION_STRING "${CLANG_VERSION} (${BACKEND_PACKAGE_STRING})"
+      PRODUCT_NAME "clang")
+  endif()
+endmacro()
+
 macro(add_clang_library name)
   cmake_parse_arguments(ARG
     ""
@@ -362,6 +380,7 @@ macro(add_clang_library name)
 
     if (NOT LLVM_INSTALL_TOOLCHAIN_ONLY OR ${name} STREQUAL "libclang")
       install(TARGETS ${name}
+        EXPORT ClangTargets
         LIBRARY DESTINATION lib${LLVM_LIBDIR_SUFFIX}
         ARCHIVE DESTINATION lib${LLVM_LIBDIR_SUFFIX}
         RUNTIME DESTINATION bin)
@@ -373,11 +392,13 @@ macro(add_clang_library name)
   endif()
 
   set_target_properties(${name} PROPERTIES FOLDER "Clang libraries")
+  set_clang_windows_version_resource_properties(${name})
 endmacro(add_clang_library)
 
 macro(add_clang_executable name)
   add_llvm_executable( ${name} ${ARGN} )
   set_target_properties(${name} PROPERTIES FOLDER "Clang executables")
+  set_clang_windows_version_resource_properties(${name})
 endmacro(add_clang_executable)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
@@ -521,9 +542,10 @@ if (CLANG_BUILT_STANDALONE)
 
   # Install a <prefix>/share/clang/cmake/ClangConfig.cmake file so that
   # find_package(Clang) works. Install the target list with it.
+  install(EXPORT ClangTargets DESTINATION ${CLANG_INSTALL_PACKAGE_DIR})
+
   install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules/ClangConfig.cmake
-    ${CLANG_BINARY_DIR}/share/clang/cmake/ClangTargets.cmake
     DESTINATION share/clang/cmake)
 
   # Also copy ClangConfig.cmake to the build directory so that dependent projects
@@ -533,3 +555,80 @@ if (CLANG_BUILT_STANDALONE)
     ${CLANG_BINARY_DIR}/share/clang/cmake/ClangConfig.cmake
     COPYONLY)
 endif ()
+
+if (CLANG_ENABLE_BOOTSTRAP)
+  include(ExternalProject)
+
+  if(CMAKE_VERSION VERSION_LESS 3.3.20150708)
+    set(cmake_3_4_USES_TERMINAL_OPTIONS)
+    set(cmake_3_4_USES_TERMINAL)
+  else()
+    set(cmake_3_4_USES_TERMINAL_OPTIONS
+      USES_TERMINAL_CONFIGURE 1
+      USES_TERMINAL_BUILD 1
+      USES_TERMINAL_INSTALL 1
+      )
+    set(cmake_3_4_USES_TERMINAL USES_TERMINAL 1)
+  endif()
+  
+  set(STAMP_DIR ${CMAKE_CURRENT_BINARY_DIR}/bootstrap-stamps/)
+  set(BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/bootstrap-bins/)
+
+  add_custom_target(bootstrap-clear
+    DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/bootstrap-cleared
+    )
+  add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/bootstrap-cleared
+    DEPENDS clang
+    COMMAND ${CMAKE_COMMAND} -E remove_directory ${BINARY_DIR}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${BINARY_DIR}
+    COMMAND ${CMAKE_COMMAND} -E remove_directory ${STAMP_DIR}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${STAMP_DIR}
+    COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_CURRENT_BINARY_DIR}/bootstrap-cleared
+    COMMENT "Clobberring bootstrap build and stamp directories"
+    )
+
+  ExternalProject_Add(bootstrap
+    DEPENDS clang
+    PREFIX bootstrap
+    SOURCE_DIR ${CMAKE_SOURCE_DIR}
+    STAMP_DIR ${STAMP_DIR}
+    BINARY_DIR ${BINARY_DIR}
+    CMAKE_ARGS
+                # We shouldn't need to set this here, but INSTALL_DIR doesn't
+                # seem to work, so instead I'm passing this through
+                -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
+                ${CLANG_BOOTSTRAP_CMAKE_ARGS}
+                -DCMAKE_CXX_COMPILER=${CMAKE_BINARY_DIR}/bin/clang++
+                -DCMAKE_C_COMPILER=${CMAKE_BINARY_DIR}/bin/clang
+    INSTALL_COMMAND ""
+    STEP_TARGETS configure build
+    ${cmake_3_4_USES_TERMINAL_OPTIONS}
+    )
+
+  # exclude really-install from main target
+  set_target_properties(bootstrap PROPERTIES _EP_really-install_EXCLUDE_FROM_MAIN On)
+  ExternalProject_Add_Step(bootstrap really-install
+    COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --target install
+    COMMENT "Performing install step for 'bootstrap'"
+    DEPENDEES build
+    ${cmake_3_4_USES_TERMINAL}
+  )
+  ExternalProject_Add_StepTargets(bootstrap really-install)
+  add_custom_target(bootstrap-install DEPENDS bootstrap-really-install)
+
+
+  set(ADDITIONAL_TARGETS_TO_ADD check-llvm check-clang check-all)
+  foreach(target ${ADDITIONAL_TARGETS_TO_ADD})
+    # exclude from main target
+    set_target_properties(bootstrap PROPERTIES _EP_${target}_EXCLUDE_FROM_MAIN On)
+
+    ExternalProject_Add_Step(bootstrap ${target}
+      COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --target ${target}
+      COMMENT "Performing ${target} for 'bootstrap'"
+      DEPENDEES configure
+      ${cmake_3_4_USES_TERMINAL}
+    )
+    ExternalProject_Add_StepTargets(bootstrap ${target})
+  endforeach()
+endif()

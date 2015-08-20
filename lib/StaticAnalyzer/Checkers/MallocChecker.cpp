@@ -392,7 +392,8 @@ private:
   /// The bug visitor which allows us to print extra diagnostics along the
   /// BugReport path. For example, showing the allocation site of the leaked
   /// region.
-  class MallocBugVisitor : public BugReporterVisitorImpl<MallocBugVisitor> {
+  class MallocBugVisitor final
+      : public BugReporterVisitorImpl<MallocBugVisitor> {
   protected:
     enum NotificationMode {
       Normal,
@@ -413,8 +414,6 @@ private:
   public:
     MallocBugVisitor(SymbolRef S, bool isLeak = false)
        : Sym(S), Mode(Normal), FailedReallocSymbol(nullptr), IsLeak(isLeak) {}
-
-    ~MallocBugVisitor() override {}
 
     void Profile(llvm::FoldingSetNodeID &ID) const override {
       static int X = 0;
@@ -515,7 +514,7 @@ REGISTER_MAP_WITH_PROGRAMSTATE(ReallocPairs, SymbolRef, ReallocPair)
 REGISTER_MAP_WITH_PROGRAMSTATE(FreeReturnValue, SymbolRef, SymbolRef)
 
 namespace {
-class StopTrackingCallback : public SymbolVisitor {
+class StopTrackingCallback final : public SymbolVisitor {
   ProgramStateRef state;
 public:
   StopTrackingCallback(ProgramStateRef st) : state(st) {}
@@ -1619,10 +1618,10 @@ void MallocChecker::ReportBadFree(CheckerContext &C, SVal ArgVal,
 
     printExpectedAllocName(os, C, DeallocExpr);
 
-    BugReport *R = new BugReport(*BT_BadFree[*CheckKind], os.str(), N);
+    auto R = llvm::make_unique<BugReport>(*BT_BadFree[*CheckKind], os.str(), N);
     R->markInteresting(MR);
     R->addRange(Range);
-    C.emitReport(R);
+    C.emitReport(std::move(R));
   }
 }
 
@@ -1643,11 +1642,12 @@ void MallocChecker::ReportFreeAlloca(CheckerContext &C, SVal ArgVal,
       BT_FreeAlloca[*CheckKind].reset(
           new BugType(CheckNames[*CheckKind], "Free alloca()", "Memory Error"));
 
-    BugReport *R = new BugReport(*BT_FreeAlloca[*CheckKind], 
-                 "Memory allocated by alloca() should not be deallocated", N);
+    auto R = llvm::make_unique<BugReport>(
+        *BT_FreeAlloca[*CheckKind],
+        "Memory allocated by alloca() should not be deallocated", N);
     R->markInteresting(ArgVal.getAsRegion());
     R->addRange(Range);
-    C.emitReport(R);
+    C.emitReport(std::move(R));
   }
 }
 
@@ -1698,11 +1698,11 @@ void MallocChecker::ReportMismatchedDealloc(CheckerContext &C,
         os << ", not " << DeallocOs.str();
     }
 
-    BugReport *R = new BugReport(*BT_MismatchedDealloc, os.str(), N);
+    auto R = llvm::make_unique<BugReport>(*BT_MismatchedDealloc, os.str(), N);
     R->markInteresting(Sym);
     R->addRange(Range);
     R->addVisitor(llvm::make_unique<MallocBugVisitor>(Sym));
-    C.emitReport(R);
+    C.emitReport(std::move(R));
   }
 }
 
@@ -1757,10 +1757,10 @@ void MallocChecker::ReportOffsetFree(CheckerContext &C, SVal ArgVal,
   else
     os << "allocated memory";
 
-  BugReport *R = new BugReport(*BT_OffsetFree[*CheckKind], os.str(), N);
+  auto R = llvm::make_unique<BugReport>(*BT_OffsetFree[*CheckKind], os.str(), N);
   R->markInteresting(MR->getBaseRegion());
   R->addRange(Range);
-  C.emitReport(R);
+  C.emitReport(std::move(R));
 }
 
 void MallocChecker::ReportUseAfterFree(CheckerContext &C, SourceRange Range,
@@ -1779,13 +1779,13 @@ void MallocChecker::ReportUseAfterFree(CheckerContext &C, SourceRange Range,
       BT_UseFree[*CheckKind].reset(new BugType(
           CheckNames[*CheckKind], "Use-after-free", "Memory Error"));
 
-    BugReport *R = new BugReport(*BT_UseFree[*CheckKind],
-                                 "Use of memory after it is freed", N);
+    auto R = llvm::make_unique<BugReport>(*BT_UseFree[*CheckKind],
+                                         "Use of memory after it is freed", N);
 
     R->markInteresting(Sym);
     R->addRange(Range);
     R->addVisitor(llvm::make_unique<MallocBugVisitor>(Sym));
-    C.emitReport(R);
+    C.emitReport(std::move(R));
   }
 }
 
@@ -1806,17 +1806,17 @@ void MallocChecker::ReportDoubleFree(CheckerContext &C, SourceRange Range,
       BT_DoubleFree[*CheckKind].reset(
           new BugType(CheckNames[*CheckKind], "Double free", "Memory Error"));
 
-    BugReport *R =
-        new BugReport(*BT_DoubleFree[*CheckKind],
-                      (Released ? "Attempt to free released memory"
-                                : "Attempt to free non-owned memory"),
-                      N);
+    auto R = llvm::make_unique<BugReport>(
+        *BT_DoubleFree[*CheckKind],
+        (Released ? "Attempt to free released memory"
+                  : "Attempt to free non-owned memory"),
+        N);
     R->addRange(Range);
     R->markInteresting(Sym);
     if (PrevSym)
       R->markInteresting(PrevSym);
     R->addVisitor(llvm::make_unique<MallocBugVisitor>(Sym));
-    C.emitReport(R);
+    C.emitReport(std::move(R));
   }
 }
 
@@ -1834,12 +1834,12 @@ void MallocChecker::ReportDoubleDelete(CheckerContext &C, SymbolRef Sym) const {
       BT_DoubleDelete.reset(new BugType(CheckNames[CK_NewDeleteChecker],
                                         "Double delete", "Memory Error"));
 
-    BugReport *R = new BugReport(*BT_DoubleDelete,
-                                 "Attempt to delete released memory", N);
+    auto R = llvm::make_unique<BugReport>(
+        *BT_DoubleDelete, "Attempt to delete released memory", N);
 
     R->markInteresting(Sym);
     R->addVisitor(llvm::make_unique<MallocBugVisitor>(Sym));
-    C.emitReport(R);
+    C.emitReport(std::move(R));
   }
 }
 
@@ -1861,15 +1861,15 @@ void MallocChecker::ReportUseZeroAllocated(CheckerContext &C,
       BT_UseZerroAllocated[*CheckKind].reset(new BugType(
           CheckNames[*CheckKind], "Use of zero allocated", "Memory Error"));
 
-    BugReport *R = new BugReport(*BT_UseZerroAllocated[*CheckKind],
-                                 "Use of zero-allocated memory", N);
+    auto R = llvm::make_unique<BugReport>(*BT_UseZerroAllocated[*CheckKind],
+                                         "Use of zero-allocated memory", N);
 
     R->addRange(Range);
     if (Sym) {
       R->markInteresting(Sym);
       R->addVisitor(llvm::make_unique<MallocBugVisitor>(Sym));
     }
-    C.emitReport(R);
+    C.emitReport(std::move(R));
   }
 }
 
@@ -2099,12 +2099,12 @@ void MallocChecker::reportLeak(SymbolRef Sym, ExplodedNode *N,
     os << "Potential memory leak";
   }
 
-  BugReport *R =
-      new BugReport(*BT_Leak[*CheckKind], os.str(), N, LocUsedForUniqueing,
-                    AllocNode->getLocationContext()->getDecl());
+  auto R = llvm::make_unique<BugReport>(
+      *BT_Leak[*CheckKind], os.str(), N, LocUsedForUniqueing,
+      AllocNode->getLocationContext()->getDecl());
   R->markInteresting(Sym);
   R->addVisitor(llvm::make_unique<MallocBugVisitor>(Sym, true));
-  C.emitReport(R);
+  C.emitReport(std::move(R));
 }
 
 void MallocChecker::checkDeadSymbols(SymbolReaper &SymReaper,

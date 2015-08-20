@@ -204,3 +204,35 @@ void fn6() {
             : "=rm"(a), "=rm"(a)
             : "11m"(a)) // expected-error {{invalid input constraint '11m' in asm}}
 }
+
+// PR14269
+typedef struct test16_foo {
+  unsigned int field1 : 1;
+  unsigned int field2 : 2;
+  unsigned int field3 : 3;
+} test16_foo;
+typedef __attribute__((vector_size(16))) int test16_bar;
+register int test16_baz asm("rbx");
+
+void test16()
+{
+  test16_foo a;
+  test16_bar b;
+
+  __asm__("movl $5, %0"
+          : "=rm" (a.field2)); // expected-error {{reference to a bit-field in asm input with a memory constraint '=rm'}}
+  __asm__("movl $5, %0"
+          :
+          : "m" (a.field3)); // expected-error {{reference to a bit-field in asm output with a memory constraint 'm'}}
+  __asm__("movl $5, %0"
+          : "=rm" (b[2])); // expected-error {{reference to a vector element in asm input with a memory constraint '=rm'}}
+  __asm__("movl $5, %0"
+          :
+          : "m" (b[3])); // expected-error {{reference to a vector element in asm output with a memory constraint 'm'}}
+  __asm__("movl $5, %0"
+          : "=rm" (test16_baz)); // expected-error {{reference to a global register variable in asm input with a memory constraint '=rm'}}
+  __asm__("movl $5, %0"
+          :
+          : "m" (test16_baz)); // expected-error {{reference to a global register variable in asm output with a memory constraint 'm'}}
+}
+

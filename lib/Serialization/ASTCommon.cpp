@@ -222,6 +222,7 @@ bool serialization::isRedeclarableDeclKind(unsigned Kind) {
   // redeclarable.
   case Decl::ImplicitParam:
   case Decl::ParmVar:
+  case Decl::ObjCTypeParam:
     return false;
   }
 

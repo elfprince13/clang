@@ -468,7 +468,9 @@ void StmtPrinter::AsmIOHelper(GCCAsmStmt *Node, unsigned int (GCCAsmStmt::*NumIO
 		}
 		
 		if(IEINN){
+			OS << "(";
 			Visit((Node->*IthExpr)(i));
+			OS << ")";
 		}
 		OS << SExpR();
 	}
@@ -722,8 +724,13 @@ void OMPClausePrinter::VisitOMPScheduleClause(OMPScheduleClause *Node) {
   OS << ")";
 }
 
-void OMPClausePrinter::VisitOMPOrderedClause(OMPOrderedClause *) {
+void OMPClausePrinter::VisitOMPOrderedClause(OMPOrderedClause *Node) {
   OS << "ordered";
+  if (auto *Num = Node->getNumForLoops()) {
+    OS << "(";
+    Num->printPretty(OS, nullptr, Policy, 0);
+    OS << ")";
+  }
 }
 
 void OMPClausePrinter::VisitOMPNowaitClause(OMPNowaitClause *) {
@@ -752,6 +759,12 @@ void OMPClausePrinter::VisitOMPCaptureClause(OMPCaptureClause *) {
 
 void OMPClausePrinter::VisitOMPSeqCstClause(OMPSeqCstClause *) {
   OS << "seq_cst";
+}
+
+void OMPClausePrinter::VisitOMPDeviceClause(OMPDeviceClause *Node) {
+  OS << "device(";
+  Node->getDevice()->printPretty(OS, nullptr, Policy, 0);
+  OS << ")";
 }
 
 template<typename T>
@@ -827,7 +840,13 @@ void OMPClausePrinter::VisitOMPReductionClause(OMPReductionClause *Node) {
 void OMPClausePrinter::VisitOMPLinearClause(OMPLinearClause *Node) {
   if (!Node->varlist_empty()) {
     OS << "linear";
+    if (Node->getModifierLoc().isValid()) {
+      OS << '('
+         << getOpenMPSimpleClauseTypeName(OMPC_linear, Node->getModifier());
+    }
     VisitOMPClauseList(Node, '(');
+    if (Node->getModifierLoc().isValid())
+      OS << ')';
     if (Node->getStep() != nullptr) {
       OS << ": ";
       Node->getStep()->printPretty(OS, nullptr, Policy, 0);
@@ -867,6 +886,17 @@ void OMPClausePrinter::VisitOMPCopyprivateClause(OMPCopyprivateClause *Node) {
 void OMPClausePrinter::VisitOMPFlushClause(OMPFlushClause *Node) {
   if (!Node->varlist_empty()) {
     VisitOMPClauseList(Node, '(');
+    OS << ")";
+  }
+}
+
+void OMPClausePrinter::VisitOMPDependClause(OMPDependClause *Node) {
+  if (!Node->varlist_empty()) {
+    OS << "depend(";
+    OS << getOpenMPSimpleClauseTypeName(Node->getClauseKind(),
+                                        Node->getDependencyKind())
+       << " :";
+    VisitOMPClauseList(Node, ' ');
     OS << ")";
   }
 }
@@ -981,6 +1011,11 @@ void StmtPrinter::VisitOMPTaskwaitDirective(OMPTaskwaitDirective *Node) {
   PrintOMPExecutableDirective(Node);
 }
 
+void StmtPrinter::VisitOMPTaskgroupDirective(OMPTaskgroupDirective *Node) {
+  Indent() << "#pragma omp taskgroup";
+  PrintOMPExecutableDirective(Node);
+}
+
 void StmtPrinter::VisitOMPFlushDirective(OMPFlushDirective *Node) {
   Indent() << "#pragma omp flush ";
   PrintOMPExecutableDirective(Node);
@@ -1001,11 +1036,28 @@ void StmtPrinter::VisitOMPTargetDirective(OMPTargetDirective *Node) {
   PrintOMPExecutableDirective(Node);
 }
 
+void StmtPrinter::VisitOMPTargetDataDirective(OMPTargetDataDirective *Node) {
+  Indent() << "#pragma omp target data ";
+  PrintOMPExecutableDirective(Node);
+}
+
 void StmtPrinter::VisitOMPTeamsDirective(OMPTeamsDirective *Node) {
   Indent() << "#pragma omp teams ";
   PrintOMPExecutableDirective(Node);
 }
 
+void StmtPrinter::VisitOMPCancellationPointDirective(
+    OMPCancellationPointDirective *Node) {
+  Indent() << "#pragma omp cancellation point "
+           << getOpenMPDirectiveName(Node->getCancelRegion());
+  PrintOMPExecutableDirective(Node);
+}
+
+void StmtPrinter::VisitOMPCancelDirective(OMPCancelDirective *Node) {
+  Indent() << "#pragma omp cancel "
+           << getOpenMPDirectiveName(Node->getCancelRegion());
+  PrintOMPExecutableDirective(Node);
+}
 //===----------------------------------------------------------------------===//
 //  Expr printing methods.
 //===----------------------------------------------------------------------===//
@@ -1153,8 +1205,6 @@ void StmtPrinter::VisitIntegerLiteral(IntegerLiteral *Node) {
   case BuiltinType::ULong:     OS << "UL"; break;
   case BuiltinType::LongLong:  OS << "LL"; break;
   case BuiltinType::ULongLong: OS << "ULL"; break;
-  case BuiltinType::Int128:    OS << "i128"; break;
-  case BuiltinType::UInt128:   OS << "Ui128"; break;
   }
 }
 
@@ -1276,6 +1326,9 @@ void StmtPrinter::VisitUnaryExprOrTypeTraitExpr(UnaryExprOrTypeTraitExpr *Node){
     break;
   case UETT_VecStep:
     OS << "vec_step";
+    break;
+  case UETT_OpenMPRequiredSimdAlign:
+    OS << "__builtin_omp_required_simd_align";
     break;
   }
   if (Node->isArgumentType()) {
@@ -1484,13 +1537,16 @@ void StmtPrinter::VisitParenListExpr(ParenListExpr* Node) {
 }
 
 void StmtPrinter::VisitDesignatedInitExpr(DesignatedInitExpr *Node) {
+  bool NeedsEquals = true;
   for (DesignatedInitExpr::designators_iterator D = Node->designators_begin(),
                       DEnd = Node->designators_end();
        D != DEnd; ++D) {
     if (D->isFieldDesignator()) {
       if (D->getDotLoc().isInvalid()) {
-        if (IdentifierInfo *II = D->getFieldName())
+        if (IdentifierInfo *II = D->getFieldName()) {
           OS << II->getName() << ":";
+          NeedsEquals = false;
+        }
       } else {
         OS << "." << D->getFieldName()->getName();
       }
@@ -1507,8 +1563,27 @@ void StmtPrinter::VisitDesignatedInitExpr(DesignatedInitExpr *Node) {
     }
   }
 
-  OS << " = ";
+  if (NeedsEquals)
+    OS << " = ";
+  else
+    OS << " ";
   PrintExpr(Node->getInit());
+}
+
+void StmtPrinter::VisitDesignatedInitUpdateExpr(
+    DesignatedInitUpdateExpr *Node) {
+  OS << "{";
+  OS << "/*base*/";
+  PrintExpr(Node->getBase());
+  OS << ", ";
+
+  OS << "/*updater*/";
+  PrintExpr(Node->getUpdater());
+  OS << "}";
+}
+
+void StmtPrinter::VisitNoInitExpr(NoInitExpr *Node) {
+  OS << "/*no init*/";
 }
 
 void StmtPrinter::VisitImplicitValueInitExpr(ImplicitValueInitExpr *Node) {
@@ -1802,7 +1877,7 @@ void StmtPrinter::VisitCXXTemporaryObjectExpr(CXXTemporaryObjectExpr *Node) {
   for (CXXTemporaryObjectExpr::arg_iterator Arg = Node->arg_begin(),
                                          ArgEnd = Node->arg_end();
        Arg != ArgEnd; ++Arg) {
-    if (Arg->isDefaultArgument())
+    if ((*Arg)->isDefaultArgument())
       break;
     if (Arg != Node->arg_begin())
       OS << ", ";
@@ -2163,14 +2238,11 @@ void StmtPrinter::VisitObjCBoxedExpr(ObjCBoxedExpr *E) {
 
 void StmtPrinter::VisitObjCArrayLiteral(ObjCArrayLiteral *E) {
   OS << "@[ ";
-  StmtRange ch = E->children();
-  if (ch.first != ch.second) {
-    while (1) {
-      Visit(*ch.first);
-      ++ch.first;
-      if (ch.first == ch.second) break;
+  ObjCArrayLiteral::child_range Ch = E->children();
+  for (auto I = Ch.begin(), E = Ch.end(); I != E; ++I) {
+    if (I != Ch.begin())
       OS << ", ";
-    }
+    Visit(*I);
   }
   OS << " ]";
 }

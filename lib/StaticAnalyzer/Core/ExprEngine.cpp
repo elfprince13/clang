@@ -817,11 +817,15 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
     case Stmt::OMPTaskyieldDirectiveClass:
     case Stmt::OMPBarrierDirectiveClass:
     case Stmt::OMPTaskwaitDirectiveClass:
+    case Stmt::OMPTaskgroupDirectiveClass:
     case Stmt::OMPFlushDirectiveClass:
     case Stmt::OMPOrderedDirectiveClass:
     case Stmt::OMPAtomicDirectiveClass:
     case Stmt::OMPTargetDirectiveClass:
+    case Stmt::OMPTargetDataDirectiveClass:
     case Stmt::OMPTeamsDirectiveClass:
+    case Stmt::OMPCancellationPointDirectiveClass:
+    case Stmt::OMPCancelDirectiveClass:
       llvm_unreachable("Stmt should not be in analyzer evaluation loop");
 
     case Stmt::ObjCSubscriptRefExprClass:
@@ -860,6 +864,7 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
 
     // Cases not handled yet; but will handle some day.
     case Stmt::DesignatedInitExprClass:
+    case Stmt::DesignatedInitUpdateExprClass:
     case Stmt::ExtVectorElementExprClass:
     case Stmt::ImaginaryLiteralClass:
     case Stmt::ObjCAtCatchStmtClass:
@@ -892,6 +897,7 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
     case Stmt::CXXBoolLiteralExprClass:
     case Stmt::ObjCBoolLiteralExprClass:
     case Stmt::FloatingLiteralClass:
+    case Stmt::NoInitExprClass:
     case Stmt::SizeOfPackExprClass:
     case Stmt::StringLiteralClass:
     case Stmt::ObjCStringLiteralClass:
@@ -2001,7 +2007,7 @@ void ExprEngine::VisitMemberExpr(const MemberExpr *M, ExplodedNode *Pred,
 }
 
 namespace {
-class CollectReachableSymbolsCallback : public SymbolVisitor {
+class CollectReachableSymbolsCallback final : public SymbolVisitor {
   InvalidatedSymbols Symbols;
 public:
   CollectReachableSymbolsCallback(ProgramStateRef State) {}

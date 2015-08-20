@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -fsyntax-only -fopenmp=libiomp5 -verify %s
+// RUN: %clang_cc1 -fsyntax-only -fopenmp -verify %s
 
 // expected-error@+1 {{unexpected OpenMP directive '#pragma omp simd'}}
 #pragma omp simd
@@ -676,5 +676,19 @@ void test_loop_messages() {
   for (double fi = 0; fi < 10.0; fi++) {
     c[(int)fi] = a[(int)fi] + b[(int)fi];
   }
+}
+
+void linear_modifiers(int argc) {
+  int f;
+  #pragma omp simd linear(f)
+  for (int k = 0; k < argc; ++k) ++k;
+  #pragma omp simd linear(val(f))
+  for (int k = 0; k < argc; ++k) ++k;
+  #pragma omp simd linear(uval(f)) // expected-error {{expected 'val' modifier}}
+  for (int k = 0; k < argc; ++k) ++k;
+  #pragma omp simd linear(ref(f)) // expected-error {{expected 'val' modifier}}
+  for (int k = 0; k < argc; ++k) ++k;
+  #pragma omp simd linear(foo(f)) // expected-error {{expected 'val' modifier}}
+  for (int k = 0; k < argc; ++k) ++k;
 }
 

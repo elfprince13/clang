@@ -1,6 +1,6 @@
-// RUN: %clang_cc1 -fno-rtti -emit-llvm-only -triple i686-pc-win32 -fdump-record-layouts -fsyntax-only %s 2>/dev/null \
+// RUN: %clang_cc1 -fno-rtti -emit-llvm-only -triple i686-pc-win32 -fms-extensions -fdump-record-layouts -fsyntax-only %s 2>/dev/null \
 // RUN:            | FileCheck %s
-// RUN: %clang_cc1 -fno-rtti -emit-llvm-only -triple x86_64-pc-win32 -fdump-record-layouts -fsyntax-only %s 2>/dev/null \
+// RUN: %clang_cc1 -fno-rtti -emit-llvm-only -triple x86_64-pc-win32 -fms-extensions -fdump-record-layouts -fsyntax-only %s 2>/dev/null \
 // RUN:            | FileCheck %s
 
 extern "C" int printf(const char *fmt, ...);
@@ -40,8 +40,6 @@ struct B : B0 {
 // CHECK-NEXT:    0 | struct B
 // CHECK-NEXT:    0 |   struct B0 (base) (empty)
 // CHECK-NEXT:    0 |   struct B0 b0 (empty)
-// CHECK-NEXT:      |   [sizeof=8, align=8
-// CHECK-NEXT:      |    nvsize=0, nvalign=8]
 // CHECK:         8 |   int a
 // CHECK-NEXT:      | [sizeof=16, align=8
 // CHECK-NEXT:      |  nvsize=16, nvalign=8]
@@ -82,23 +80,13 @@ struct D {
 // CHECK: *** Dumping AST Record Layout
 // CHECK-NEXT:    0 | struct D
 // CHECK-NEXT:    0 |   struct B0 b0 (empty)
-// CHECK-NEXT:      |   [sizeof=8, align=8
-// CHECK-NEXT:      |    nvsize=0, nvalign=8]
 // CHECK:         8 |   struct C0 c0
 // CHECK-NEXT:    8 |     int a
-// CHECK-NEXT:      |   [sizeof=4, align=4
-// CHECK-NEXT:      |    nvsize=4, nvalign=4]
 // CHECK:        12 |   struct C1 c1
 // CHECK-NEXT:   12 |     int a
-// CHECK-NEXT:      |   [sizeof=4, align=4
-// CHECK-NEXT:      |    nvsize=4, nvalign=4]
 // CHECK:        16 |   struct C2 c2
 // CHECK-NEXT:   16 |     int a
-// CHECK-NEXT:      |   [sizeof=4, align=4
-// CHECK-NEXT:      |    nvsize=4, nvalign=4]
 // CHECK:        24 |   struct B1 b1 (empty)
-// CHECK-NEXT:      |   [sizeof=8, align=8
-// CHECK-NEXT:      |    nvsize=0, nvalign=8]
 // CHECK:        32 |   int a
 // CHECK-NEXT:      | [sizeof=40, align=8
 // CHECK-NEXT:      |  nvsize=40, nvalign=8]

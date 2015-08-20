@@ -146,13 +146,17 @@ def msave_temp_labels : Flag<["-"], "msave-temp-labels">,
   HelpText<"Save temporary labels in the symbol table. "
            "Note this may change .s semantics and shouldn't generally be used "
            "on compiler-generated code.">;
-
+def mrelocation_model : Separate<["-"], "mrelocation-model">,
+  HelpText<"The relocation model to use">;
 }
 
 def disable_llvm_optzns : Flag<["-"], "disable-llvm-optzns">,
   HelpText<"Don't run LLVM optimization passes">;
 def disable_llvm_verifier : Flag<["-"], "disable-llvm-verifier">,
   HelpText<"Don't run the LLVM IR verifier pass">;
+def disable_llvm_passes : Flag<["-"], "disable-llvm-passes">,
+  HelpText<"Use together with -emit-llvm to get pristine LLVM IR from the "
+           "frontend by not running any LLVM passes at all">;
 def disable_red_zone : Flag<["-"], "disable-red-zone">,
   HelpText<"Do not emit code that uses the red zone.">;
 def dwarf_column_info : Flag<["-"], "dwarf-column-info">,
@@ -225,8 +229,6 @@ def backend_option : Separate<["-"], "backend-option">,
   HelpText<"Additional arguments to forward to LLVM backend (during code gen)">;
 def mregparm : Separate<["-"], "mregparm">,
   HelpText<"Limit the number of registers available for integer arguments">;
-def mrelocation_model : Separate<["-"], "mrelocation-model">,
-  HelpText<"The relocation model to use">;
 def munwind_tables : Flag<["-"], "munwind-tables">,
   HelpText<"Generate unwinding tables for all functions">;
 def mconstructor_aliases : Flag<["-"], "mconstructor-aliases">,
@@ -301,6 +303,10 @@ def fmessage_length : Separate<["-"], "fmessage-length">, MetaVarName<"<N>">,
   HelpText<"Format message diagnostics so that they fit within N columns or fewer, when possible.">;
 def verify : Flag<["-"], "verify">,
   HelpText<"Verify diagnostic output using comment directives">;
+def verify_ignore_unexpected : Flag<["-"], "verify-ignore-unexpected">,
+  HelpText<"Ignore unexpected diagnostic messages">;
+def verify_ignore_unexpected_EQ : CommaJoined<["-"], "verify-ignore-unexpected=">,
+  HelpText<"Ignore unexpected diagnostic messages">;
 def Wno_rewrite_macros : Flag<["-"], "Wno-rewrite-macros">,
   HelpText<"Silence ObjC rewriting warnings">;
 
@@ -361,10 +367,23 @@ def fmodule_map_file_home_is_cwd : Flag<["-"], "fmodule-map-file-home-is-cwd">,
 def fmodule_feature : Separate<["-"], "fmodule-feature">,
   MetaVarName<"<feature>">,
   HelpText<"Enable <feature> in module map requires declarations">;
+def fmodules_embed_file_EQ : Joined<["-"], "fmodules-embed-file=">,
+  MetaVarName<"<file>">,
+  HelpText<"Embed the contents of the specified file into the module file "
+           "being compiled.">;
 def fmodules_local_submodule_visibility :
   Flag<["-"], "fmodules-local-submodule-visibility">,
   HelpText<"Enforce name visibility rules across submodules of the same "
            "top-level module.">;
+def fmodule_format_EQ : Joined<["-"], "fmodule-format=">,
+  HelpText<"Select the container format for clang modules and PCH. "
+           "Supported options are 'raw' and 'obj'.">;
+def fno_modules_hide_internal_linkage :
+  Flag<["-"], "fno-modules-hide-internal-linkage">,
+  HelpText<"Make all declarations visible to redeclaration lookup, "
+           "even if they have internal linkage.">;
+def fconcepts_ts : Flag<["-"], "fconcepts-ts">,
+  HelpText<"Enable C++ Extensions for Concepts.">;
 
 let Group = Action_Group in {
 
@@ -472,6 +491,8 @@ def fblocks_runtime_optional : Flag<["-"], "fblocks-runtime-optional">,
   HelpText<"Weakly link in the blocks runtime">;
 def fsjlj_exceptions : Flag<["-"], "fsjlj-exceptions">,
   HelpText<"Use SjLj style exceptions">;
+def fnew_ms_eh: Flag<["-"], "fnew-ms-eh">,
+  HelpText<"Use the new IR representation for MS exceptions">;
 def split_dwarf_file : Separate<["-"], "split-dwarf-file">,
   HelpText<"File name to use for split dwarf debug info output">;
 def fno_wchar : Flag<["-"], "fno-wchar">,
@@ -549,6 +570,8 @@ def vtordisp_mode_EQ : Joined<["-"], "vtordisp-mode=">,
   HelpText<"Control vtordisp placement on win32 targets">;
 def fno_rtti_data : Flag<["-"], "fno-rtti-data">,
   HelpText<"Control emission of RTTI data">;
+def fnative_half_type: Flag<["-"], "fnative-half-type">,
+  HelpText<"Use the native half type for __fp16 instead of promoting to float">;
 def fallow_half_arguments_and_returns : Flag<["-"], "fallow-half-arguments-and-returns">,
   HelpText<"Allow function arguments and returns of type half">;
 

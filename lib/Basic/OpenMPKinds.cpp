@@ -91,6 +91,16 @@ unsigned clang::getOpenMPSimpleClauseType(OpenMPClauseKind Kind,
 #define OPENMP_SCHEDULE_KIND(Name) .Case(#Name, OMPC_SCHEDULE_##Name)
 #include "clang/Basic/OpenMPKinds.def"
         .Default(OMPC_SCHEDULE_unknown);
+  case OMPC_depend:
+    return llvm::StringSwitch<OpenMPDependClauseKind>(Str)
+#define OPENMP_DEPEND_KIND(Name) .Case(#Name, OMPC_DEPEND_##Name)
+#include "clang/Basic/OpenMPKinds.def"
+        .Default(OMPC_DEPEND_unknown);
+  case OMPC_linear:
+    return llvm::StringSwitch<OpenMPLinearClauseKind>(Str)
+#define OPENMP_LINEAR_KIND(Name) .Case(#Name, OMPC_LINEAR_##Name)
+#include "clang/Basic/OpenMPKinds.def"
+        .Default(OMPC_LINEAR_unknown);
   case OMPC_unknown:
   case OMPC_threadprivate:
   case OMPC_if:
@@ -103,7 +113,6 @@ unsigned clang::getOpenMPSimpleClauseType(OpenMPClauseKind Kind,
   case OMPC_lastprivate:
   case OMPC_shared:
   case OMPC_reduction:
-  case OMPC_linear:
   case OMPC_aligned:
   case OMPC_copyin:
   case OMPC_copyprivate:
@@ -117,6 +126,7 @@ unsigned clang::getOpenMPSimpleClauseType(OpenMPClauseKind Kind,
   case OMPC_update:
   case OMPC_capture:
   case OMPC_seq_cst:
+  case OMPC_device:
     break;
   }
   llvm_unreachable("Invalid OpenMP simple clause kind");
@@ -154,7 +164,26 @@ const char *clang::getOpenMPSimpleClauseTypeName(OpenMPClauseKind Kind,
     return #Name;
 #include "clang/Basic/OpenMPKinds.def"
     }
+  case OMPC_depend:
+    switch (Type) {
+    case OMPC_DEPEND_unknown:
+      return "unknown";
+#define OPENMP_DEPEND_KIND(Name)                                             \
+  case OMPC_DEPEND_##Name:                                                   \
+    return #Name;
+#include "clang/Basic/OpenMPKinds.def"
+    }
     llvm_unreachable("Invalid OpenMP 'schedule' clause type");
+  case OMPC_linear:
+    switch (Type) {
+    case OMPC_LINEAR_unknown:
+      return "unknown";
+#define OPENMP_LINEAR_KIND(Name)                                             \
+  case OMPC_LINEAR_##Name:                                                   \
+    return #Name;
+#include "clang/Basic/OpenMPKinds.def"
+    }
+    llvm_unreachable("Invalid OpenMP 'linear' clause type");
   case OMPC_unknown:
   case OMPC_threadprivate:
   case OMPC_if:
@@ -167,7 +196,6 @@ const char *clang::getOpenMPSimpleClauseTypeName(OpenMPClauseKind Kind,
   case OMPC_lastprivate:
   case OMPC_shared:
   case OMPC_reduction:
-  case OMPC_linear:
   case OMPC_aligned:
   case OMPC_copyin:
   case OMPC_copyprivate:
@@ -181,6 +209,7 @@ const char *clang::getOpenMPSimpleClauseTypeName(OpenMPClauseKind Kind,
   case OMPC_update:
   case OMPC_capture:
   case OMPC_seq_cst:
+  case OMPC_device:
     break;
   }
   llvm_unreachable("Invalid OpenMP simple clause kind");
@@ -314,6 +343,16 @@ bool clang::isAllowedClauseForDirective(OpenMPDirectiveKind DKind,
       break;
     }
     break;
+  case OMPD_target_data:
+    switch (CKind) {
+#define OPENMP_TARGET_DATA_CLAUSE(Name)                                        \
+  case OMPC_##Name:                                                            \
+    return true;
+#include "clang/Basic/OpenMPKinds.def"
+    default:
+      break;
+    }
+    break;
   case OMPD_teams:
     switch (CKind) {
 #define OPENMP_TEAMS_CLAUSE(Name)                                              \
@@ -332,6 +371,9 @@ bool clang::isAllowedClauseForDirective(OpenMPDirectiveKind DKind,
   case OMPD_taskyield:
   case OMPD_barrier:
   case OMPD_taskwait:
+  case OMPD_taskgroup:
+  case OMPD_cancellation_point:
+  case OMPD_cancel:
   case OMPD_ordered:
     break;
   }

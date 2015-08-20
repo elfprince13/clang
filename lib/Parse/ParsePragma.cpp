@@ -745,9 +745,7 @@ bool Parser::HandlePragmaMSInitSeg(StringRef PragmaName,
 struct PragmaLoopHintInfo {
   Token PragmaName;
   Token Option;
-  Token *Toks;
-  size_t TokSize;
-  PragmaLoopHintInfo() : Toks(nullptr), TokSize(0) {}
+  ArrayRef<Token> Toks;
 };
 
 static std::string PragmaLoopHintString(Token PragmaName, Token Option) {
@@ -780,8 +778,8 @@ bool Parser::HandlePragmaLoopHint(LoopHint &Hint) {
   Hint.OptionLoc = IdentifierLoc::create(
       Actions.Context, Info->Option.getLocation(), OptionInfo);
 
-  Token *Toks = Info->Toks;
-  size_t TokSize = Info->TokSize;
+  const Token *Toks = Info->Toks.data();
+  size_t TokSize = Info->Toks.size();
 
   // Return a valid hint if pragma unroll or nounroll were specified
   // without an argument.
@@ -799,8 +797,10 @@ bool Parser::HandlePragmaLoopHint(LoopHint &Hint) {
          "PragmaLoopHintInfo::Toks must contain at least one token.");
 
   // If no option is specified the argument is assumed to be a constant expr.
+  bool OptionUnroll = false;
   bool StateOption = false;
-  if (OptionInfo) { // Pragma unroll does not specify an option.
+  if (OptionInfo) { // Pragma Unroll does not specify an option.
+    OptionUnroll = OptionInfo->isStr("unroll");
     StateOption = llvm::StringSwitch<bool>(OptionInfo->getName())
                       .Case("vectorize", true)
                       .Case("interleave", true)
@@ -812,19 +812,19 @@ bool Parser::HandlePragmaLoopHint(LoopHint &Hint) {
   if (Toks[0].is(tok::eof)) {
     ConsumeToken(); // The annotation token.
     Diag(Toks[0].getLocation(), diag::err_pragma_loop_missing_argument)
-        << /*StateArgument=*/StateOption << /*FullKeyword=*/PragmaUnroll;
+        << /*StateArgument=*/StateOption << /*FullKeyword=*/OptionUnroll;
     return false;
   }
 
   // Validate the argument.
   if (StateOption) {
     ConsumeToken(); // The annotation token.
-    bool OptionUnroll = OptionInfo->isStr("unroll");
     SourceLocation StateLoc = Toks[0].getLocation();
     IdentifierInfo *StateInfo = Toks[0].getIdentifierInfo();
-    if (!StateInfo || ((OptionUnroll ? !StateInfo->isStr("full")
-                                     : !StateInfo->isStr("enable")) &&
-                       !StateInfo->isStr("disable"))) {
+    if (!StateInfo ||
+        (!StateInfo->isStr("enable") && !StateInfo->isStr("disable") &&
+         ((OptionUnroll && !StateInfo->isStr("full")) ||
+          (!OptionUnroll && !StateInfo->isStr("assume_safety"))))) {
       Diag(Toks[0].getLocation(), diag::err_pragma_invalid_keyword)
           << /*FullKeyword=*/OptionUnroll;
       return false;
@@ -1925,11 +1925,7 @@ static bool ParseLoopHintValue(Preprocessor &PP, Token &Tok, Token PragmaName,
   EOFTok.setLocation(Tok.getLocation());
   ValueList.push_back(EOFTok); // Terminates expression for parsing.
 
-  Token *TokenArray = (Token *)PP.getPreprocessorAllocator().Allocate(
-      ValueList.size() * sizeof(Token), llvm::alignOf<Token>());
-  std::copy(ValueList.begin(), ValueList.end(), TokenArray);
-  Info.Toks = TokenArray;
-  Info.TokSize = ValueList.size();
+  Info.Toks = llvm::makeArrayRef(ValueList).copy(PP.getPreprocessorAllocator());
 
   Info.PragmaName = PragmaName;
   Info.Option = Option;
@@ -1953,10 +1949,12 @@ static bool ParseLoopHintValue(Preprocessor &PP, Token &Tok, Token PragmaName,
 ///  loop-hint-keyword:
 ///    'enable'
 ///    'disable'
+///    'assume_safety'
 ///
 ///  unroll-hint-keyword:
-///    'full'
+///    'enable'
 ///    'disable'
+///    'full'
 ///
 ///  loop-hint-value:
 ///    constant-expression
@@ -1972,10 +1970,13 @@ static bool ParseLoopHintValue(Preprocessor &PP, Token &Tok, Token PragmaName,
 /// only works on inner loops.
 ///
 /// The unroll and unroll_count directives control the concatenation
-/// unroller. Specifying unroll(full) instructs llvm to try to
-/// unroll the loop completely, and unroll(disable) disables unrolling
-/// for the loop. Specifying unroll_count(_value_) instructs llvm to
-/// try to unroll the loop the number of times indicated by the value.
+/// unroller. Specifying unroll(enable) instructs llvm to unroll the loop
+/// completely if the trip count is known at compile time and unroll partially
+/// if the trip count is not known.  Specifying unroll(full) is similar to
+/// unroll(enable) but will unroll the loop only if the trip count is known at
+/// compile time.  Specifying unroll(disable) disables unrolling for the
+/// loop. Specifying unroll_count(_value_) instructs llvm to try to unroll the
+/// loop the number of times indicated by the value.
 void PragmaLoopHintHandler::HandlePragma(Preprocessor &PP,
                                          PragmaIntroducerKind Introducer,
                                          Token &Tok) {

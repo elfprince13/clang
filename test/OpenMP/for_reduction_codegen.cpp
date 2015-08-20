@@ -1,9 +1,10 @@
-// RUN: %clang_cc1 -verify -fopenmp=libiomp5 -x c++ -triple x86_64-apple-darwin10 -emit-llvm %s -o - | FileCheck %s
-// RUN: %clang_cc1 -fopenmp=libiomp5 -x c++ -std=c++11 -triple x86_64-apple-darwin10 -emit-pch -o %t %s
-// RUN: %clang_cc1 -fopenmp=libiomp5 -x c++ -triple x86_64-apple-darwin10 -std=c++11 -include-pch %t -verify %s -emit-llvm -o - | FileCheck %s
-// RUN: %clang_cc1 -verify -fopenmp=libiomp5 -x c++ -std=c++11 -DLAMBDA -triple x86_64-apple-darwin10 -emit-llvm %s -o - | FileCheck -check-prefix=LAMBDA %s
-// RUN: %clang_cc1 -verify -fopenmp=libiomp5 -x c++ -fblocks -DBLOCKS -triple x86_64-apple-darwin10 -emit-llvm %s -o - | FileCheck -check-prefix=BLOCKS %s
+// RUN: %clang_cc1 -verify -fopenmp -x c++ -triple x86_64-apple-darwin10 -emit-llvm %s -o - | FileCheck %s
+// RUN: %clang_cc1 -fopenmp -x c++ -std=c++11 -triple x86_64-apple-darwin10 -emit-pch -o %t %s
+// RUN: %clang_cc1 -fopenmp -x c++ -triple x86_64-apple-darwin10 -std=c++11 -include-pch %t -verify %s -emit-llvm -o - | FileCheck %s
+// RUN: %clang_cc1 -verify -fopenmp -x c++ -std=c++11 -DLAMBDA -triple x86_64-apple-darwin10 -emit-llvm %s -o - | FileCheck -check-prefix=LAMBDA %s
+// RUN: %clang_cc1 -verify -fopenmp -x c++ -fblocks -DBLOCKS -triple x86_64-apple-darwin10 -emit-llvm %s -o - | FileCheck -check-prefix=BLOCKS %s
 // expected-no-diagnostics
+// REQUIRES: x86-registered-target
 #ifndef HEADER
 #define HEADER
 
@@ -71,7 +72,7 @@ int main() {
     // LAMBDA: store double 0.0{{.+}}, double* [[G_PRIVATE_ADDR]]
     // LAMBDA: call void @__kmpc_for_static_init_4(
     g = 1;
-    // LAMBDA: store volatile double 1.0{{.+}}, double* [[G_PRIVATE_ADDR]],
+    // LAMBDA: store double 1.0{{.+}}, double* [[G_PRIVATE_ADDR]],
     // LAMBDA: [[G_PRIVATE_ADDR_REF:%.+]] = getelementptr inbounds %{{.+}}, %{{.+}}* [[ARG:%.+]], i{{[0-9]+}} 0, i{{[0-9]+}} 0
     // LAMBDA: store double* [[G_PRIVATE_ADDR]], double** [[G_PRIVATE_ADDR_REF]]
     // LAMBDA: call void [[INNER_LAMBDA:@.+]](%{{.+}}* [[ARG]])
@@ -106,7 +107,7 @@ int main() {
       // LAMBDA: [[ARG_PTR:%.+]] = load %{{.+}}*, %{{.+}}** [[ARG_PTR_REF]]
       // LAMBDA: [[G_PTR_REF:%.+]] = getelementptr inbounds %{{.+}}, %{{.+}}* [[ARG_PTR]], i{{[0-9]+}} 0, i{{[0-9]+}} 0
       // LAMBDA: [[G_REF:%.+]] = load double*, double** [[G_PTR_REF]]
-      // LAMBDA: store volatile double 2.0{{.+}}, double* [[G_REF]]
+      // LAMBDA: store double 2.0{{.+}}, double* [[G_REF]]
     }();
   }
   }();
@@ -130,7 +131,7 @@ int main() {
     // BLOCKS: store double 0.0{{.+}}, double* [[G_PRIVATE_ADDR]]
     g = 1;
     // BLOCKS: call void @__kmpc_for_static_init_4(
-    // BLOCKS: store volatile double 1.0{{.+}}, double* [[G_PRIVATE_ADDR]],
+    // BLOCKS: store double 1.0{{.+}}, double* [[G_PRIVATE_ADDR]],
     // BLOCKS-NOT: [[G]]{{[[^:word:]]}}
     // BLOCKS: double* [[G_PRIVATE_ADDR]]
     // BLOCKS-NOT: [[G]]{{[[^:word:]]}}
@@ -163,7 +164,7 @@ int main() {
       // BLOCKS: define {{.+}} void {{@.+}}(i8*
       g = 2;
       // BLOCKS-NOT: [[G]]{{[[^:word:]]}}
-      // BLOCKS: store volatile double 2.0{{.+}}, double*
+      // BLOCKS: store double 2.0{{.+}}, double*
       // BLOCKS-NOT: [[G]]{{[[^:word:]]}}
       // BLOCKS: ret
     }();
@@ -306,19 +307,16 @@ int main() {
 // t_var += t_var_reduction;
 // CHECK: load float, float* [[T_VAR_PRIV]]
 // CHECK: [[T_VAR_REF_INT:%.+]] = bitcast float* [[T_VAR_REF]] to i32*
-// CHECK: load atomic i32, i32* [[T_VAR_REF_INT]] monotonic,
-// CHECK: [[OLD1:%.+]] = bitcast i32 %{{.+}} to float
+// CHECK: [[OLD1:%.+]] = load atomic i32, i32* [[T_VAR_REF_INT]] monotonic,
 // CHECK: br label %[[CONT:.+]]
 // CHECK: [[CONT]]
-// CHECK: [[ORIG_OLD:%.+]] = phi float [ [[OLD1]], %{{.+}} ], [ [[OLD2:%.+]], %[[CONT]] ]
-// CHECK: [[UP:%.+]] = fadd float
-// CHECK: [[ORIG_OLD_INT:%.+]] = bitcast float [[ORIG_OLD]] to i32
-// CHECK: [[UP_INT:%.+]] = bitcast float [[UP]] to i32
+// CHECK: [[ORIG_OLD_INT:%.+]] = phi i32 [ [[OLD1]], %{{.+}} ], [ [[OLD2:%.+]], %[[CONT]] ]
+// CHECK: fadd float
+// CHECK: [[UP_INT:%.+]] = load i32, i32*
 // CHECK: [[T_VAR_REF_INT:%.+]] = bitcast float* [[T_VAR_REF]] to i32*
 // CHECK: [[RES:%.+]] = cmpxchg i32* [[T_VAR_REF_INT]], i32 [[ORIG_OLD_INT]], i32 [[UP_INT]] monotonic monotonic
-// CHECK: [[OLD_VAL_INT:%.+]] = extractvalue { i32, i1 } [[RES]], 0
+// CHECK: [[OLD2:%.+]] = extractvalue { i32, i1 } [[RES]], 0
 // CHECK: [[SUCCESS_FAIL:%.+]] = extractvalue { i32, i1 } [[RES]], 1
-// CHECK: [[OLD2]] = bitcast i32 [[OLD_VAL_INT]] to float
 // CHECK: br i1 [[SUCCESS_FAIL]], label %[[ATOMIC_DONE:.+]], label %[[CONT]]
 // CHECK: [[ATOMIC_DONE]]
 
@@ -351,21 +349,18 @@ int main() {
 // t_var1 = min(t_var1, t_var1_reduction);
 // CHECK: load float, float* [[T_VAR1_PRIV]]
 // CHECK: [[T_VAR1_REF_INT:%.+]] = bitcast float* [[T_VAR1_REF]] to i32*
-// CHECK: load atomic i32, i32* [[T_VAR1_REF_INT]] monotonic,
-// CHECK: [[OLD1:%.+]] = bitcast i32 %{{.+}} to float
+// CHECK: [[OLD1:%.+]] = load atomic i32, i32* [[T_VAR1_REF_INT]] monotonic,
 // CHECK: br label %[[CONT:.+]]
 // CHECK: [[CONT]]
-// CHECK: [[ORIG_OLD:%.+]] = phi float [ [[OLD1]], %{{.+}} ], [ [[OLD2:%.+]], %{{.+}} ]
+// CHECK: [[ORIG_OLD_INT:%.+]] = phi i32 [ [[OLD1]], %{{.+}} ], [ [[OLD2:%.+]], %{{.+}} ]
 // CHECK: [[CMP:%.+]] = fcmp olt float
 // CHECK: br i1 [[CMP]]
-// CHECK: [[UP:%.+]] = phi float
-// CHECK: [[ORIG_OLD_INT:%.+]] = bitcast float [[ORIG_OLD]] to i32
-// CHECK: [[UP_INT:%.+]] = bitcast float [[UP]] to i32
+// CHECK: phi float
+// CHECK: [[UP_INT:%.+]] = load i32
 // CHECK: [[T_VAR1_REF_INT:%.+]] = bitcast float* [[T_VAR1_REF]] to i32*
 // CHECK: [[RES:%.+]] = cmpxchg i32* [[T_VAR1_REF_INT]], i32 [[ORIG_OLD_INT]], i32 [[UP_INT]] monotonic monotonic
-// CHECK: [[OLD_VAL_INT:%.+]] = extractvalue { i32, i1 } [[RES]], 0
+// CHECK: [[OLD2:%.+]] = extractvalue { i32, i1 } [[RES]], 0
 // CHECK: [[SUCCESS_FAIL:%.+]] = extractvalue { i32, i1 } [[RES]], 1
-// CHECK: [[OLD2]] = bitcast i32 [[OLD_VAL_INT]] to float
 // CHECK: br i1 [[SUCCESS_FAIL]], label %[[ATOMIC_DONE:.+]], label %[[CONT]]
 // CHECK: [[ATOMIC_DONE]]
 

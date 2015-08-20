@@ -16,6 +16,14 @@ struct S_large {
   int a[9];
 };
 
+// Helper class for lifetime scope absence testing
+struct Combiner {
+  S_large a, b;
+
+  Combiner(S_large);
+  Combiner f();  
+};
+
 extern S_small foo_small();
 extern S_large foo_large();
 extern void bar_small(S_small*);
@@ -120,6 +128,19 @@ void large_auto_object() {
     S_large s;
     bar_large(&s);
   }
+}
+
+int large_combiner_test(S_large s) {
+// CHECK-LABEL: define i32 @large_combiner_test
+// CHECK: [[T1:%.*]] = alloca %struct.Combiner
+// CHECK: [[T2:%.*]] = alloca %struct.Combiner
+// CHECK: [[T3:%.*]] = call %struct.Combiner* @_ZN8CombinerC1E7S_large(%struct.Combiner* nonnull [[T1]], [9 x i32] %s.coerce)
+// CHECK: call void @_ZN8Combiner1fEv(%struct.Combiner* nonnull sret [[T2]], %struct.Combiner* nonnull [[T1]])
+// CHECK: [[T4:%.*]] = getelementptr inbounds %struct.Combiner, %struct.Combiner* [[T2]], i32 0, i32 0, i32 0, i32 0
+// CHECK: [[T5:%.*]] = load i32, i32* [[T4]]
+// CHECK: ret i32 [[T5]]
+
+  return Combiner(s).f().a.a[0];
 }
 
 }

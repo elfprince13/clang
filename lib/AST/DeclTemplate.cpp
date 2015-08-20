@@ -57,11 +57,8 @@ TemplateParameterList *
 TemplateParameterList::Create(const ASTContext &C, SourceLocation TemplateLoc,
                               SourceLocation LAngleLoc, NamedDecl **Params,
                               unsigned NumParams, SourceLocation RAngleLoc) {
-  unsigned Size = sizeof(TemplateParameterList) 
-                + sizeof(NamedDecl *) * NumParams;
-  unsigned Align = std::max(llvm::alignOf<TemplateParameterList>(),
-                            llvm::alignOf<NamedDecl*>());
-  void *Mem = C.Allocate(Size, Align);
+  void *Mem = C.Allocate(totalSizeToAlloc<NamedDecl *>(NumParams),
+                         llvm::alignOf<TemplateParameterList>());
   return new (Mem) TemplateParameterList(TemplateLoc, LAngleLoc, Params,
                                          NumParams, RAngleLoc);
 }
@@ -122,6 +119,12 @@ static void AdoptTemplateParameterList(TemplateParameterList *Params,
     if (TemplateTemplateParmDecl *TTP = dyn_cast<TemplateTemplateParmDecl>(*P))
       AdoptTemplateParameterList(TTP->getTemplateParameters(), Owner);
   }
+}
+
+namespace clang {
+void *allocateDefaultArgStorageChain(const ASTContext &C) {
+  return new (C) char[sizeof(void*) * 2];
+}
 }
 
 //===----------------------------------------------------------------------===//
@@ -234,8 +237,8 @@ static void GenerateInjectedTemplateArgs(ASTContext &Context,
     }
     
     if ((*Param)->isTemplateParameterPack())
-      Arg = TemplateArgument::CreatePackCopy(Context, &Arg, 1);
-    
+      Arg = TemplateArgument::CreatePackCopy(Context, Arg);
+
     *Args++ = Arg;
   }
 }
@@ -504,14 +507,14 @@ TemplateTypeParmDecl::CreateDeserialized(const ASTContext &C, unsigned ID) {
 
 SourceLocation TemplateTypeParmDecl::getDefaultArgumentLoc() const {
   return hasDefaultArgument()
-    ? DefaultArgument->getTypeLoc().getBeginLoc()
-    : SourceLocation();
+             ? getDefaultArgumentInfo()->getTypeLoc().getBeginLoc()
+             : SourceLocation();
 }
 
 SourceRange TemplateTypeParmDecl::getSourceRange() const {
   if (hasDefaultArgument() && !defaultArgumentWasInherited())
     return SourceRange(getLocStart(),
-                       DefaultArgument->getTypeLoc().getEndLoc());
+                       getDefaultArgumentInfo()->getTypeLoc().getEndLoc());
   else
     return TypeDecl::getSourceRange();
 }
@@ -543,15 +546,14 @@ NonTypeTemplateParmDecl::NonTypeTemplateParmDecl(DeclContext *DC,
                                                  unsigned NumExpandedTypes,
                                                 TypeSourceInfo **ExpandedTInfos)
   : DeclaratorDecl(NonTypeTemplateParm, DC, IdLoc, Id, T, TInfo, StartLoc),
-    TemplateParmPosition(D, P), DefaultArgumentAndInherited(nullptr, false),
-    ParameterPack(true), ExpandedParameterPack(true),
-    NumExpandedTypes(NumExpandedTypes)
-{
+    TemplateParmPosition(D, P), ParameterPack(true),
+    ExpandedParameterPack(true), NumExpandedTypes(NumExpandedTypes) {
   if (ExpandedTypes && ExpandedTInfos) {
-    void **TypesAndInfos = reinterpret_cast<void **>(this + 1);
+    auto TypesAndInfos =
+        getTrailingObjects<std::pair<QualType, TypeSourceInfo *>>();
     for (unsigned I = 0; I != NumExpandedTypes; ++I) {
-      TypesAndInfos[2*I] = ExpandedTypes[I].getAsOpaquePtr();
-      TypesAndInfos[2*I + 1] = ExpandedTInfos[I];
+      new (&TypesAndInfos[I].first) QualType(ExpandedTypes[I]);
+      TypesAndInfos[I].second = ExpandedTInfos[I];
     }
   }
 }
@@ -575,10 +577,11 @@ NonTypeTemplateParmDecl::Create(const ASTContext &C, DeclContext *DC,
                                 const QualType *ExpandedTypes, 
                                 unsigned NumExpandedTypes,
                                 TypeSourceInfo **ExpandedTInfos) {
-  unsigned Extra = NumExpandedTypes * 2 * sizeof(void*);
-  return new (C, DC, Extra) NonTypeTemplateParmDecl(
-      DC, StartLoc, IdLoc, D, P, Id, T, TInfo,
-      ExpandedTypes, NumExpandedTypes, ExpandedTInfos);
+  return new (C, DC,
+              additionalSizeToAlloc<std::pair<QualType, TypeSourceInfo *>>(
+                  NumExpandedTypes))
+      NonTypeTemplateParmDecl(DC, StartLoc, IdLoc, D, P, Id, T, TInfo,
+                              ExpandedTypes, NumExpandedTypes, ExpandedTInfos);
 }
 
 NonTypeTemplateParmDecl *
@@ -591,10 +594,12 @@ NonTypeTemplateParmDecl::CreateDeserialized(ASTContext &C, unsigned ID) {
 NonTypeTemplateParmDecl *
 NonTypeTemplateParmDecl::CreateDeserialized(ASTContext &C, unsigned ID,
                                             unsigned NumExpandedTypes) {
-  unsigned Extra = NumExpandedTypes * 2 * sizeof(void*);
-  return new (C, ID, Extra) NonTypeTemplateParmDecl(
-      nullptr, SourceLocation(), SourceLocation(), 0, 0, nullptr, QualType(),
-      nullptr, nullptr, NumExpandedTypes, nullptr);
+  return new (C, ID,
+              additionalSizeToAlloc<std::pair<QualType, TypeSourceInfo *>>(
+                  NumExpandedTypes))
+      NonTypeTemplateParmDecl(nullptr, SourceLocation(), SourceLocation(), 0, 0,
+                              nullptr, QualType(), nullptr, nullptr,
+                              NumExpandedTypes, nullptr);
 }
 
 SourceRange NonTypeTemplateParmDecl::getSourceRange() const {
@@ -621,12 +626,11 @@ TemplateTemplateParmDecl::TemplateTemplateParmDecl(
     IdentifierInfo *Id, TemplateParameterList *Params,
     unsigned NumExpansions, TemplateParameterList * const *Expansions)
   : TemplateDecl(TemplateTemplateParm, DC, L, Id, Params),
-    TemplateParmPosition(D, P), DefaultArgument(),
-    DefaultArgumentWasInherited(false), ParameterPack(true),
+    TemplateParmPosition(D, P), ParameterPack(true),
     ExpandedParameterPack(true), NumExpandedParams(NumExpansions) {
   if (Expansions)
-    std::memcpy(reinterpret_cast<void*>(this + 1), Expansions,
-                sizeof(TemplateParameterList*) * NumExpandedParams);
+    std::uninitialized_copy(Expansions, Expansions + NumExpandedParams,
+                            getTrailingObjects<TemplateParameterList *>());
 }
 
 TemplateTemplateParmDecl *
@@ -644,9 +648,10 @@ TemplateTemplateParmDecl::Create(const ASTContext &C, DeclContext *DC,
                                  IdentifierInfo *Id,
                                  TemplateParameterList *Params,
                                  ArrayRef<TemplateParameterList *> Expansions) {
-  return new (C, DC, sizeof(TemplateParameterList*) * Expansions.size())
-      TemplateTemplateParmDecl(DC, L, D, P, Id, Params,
-                               Expansions.size(), Expansions.data());
+  return new (C, DC,
+              additionalSizeToAlloc<TemplateParameterList *>(Expansions.size()))
+      TemplateTemplateParmDecl(DC, L, D, P, Id, Params, Expansions.size(),
+                               Expansions.data());
 }
 
 TemplateTemplateParmDecl *
@@ -658,26 +663,41 @@ TemplateTemplateParmDecl::CreateDeserialized(ASTContext &C, unsigned ID) {
 TemplateTemplateParmDecl *
 TemplateTemplateParmDecl::CreateDeserialized(ASTContext &C, unsigned ID,
                                              unsigned NumExpansions) {
-  return new (C, ID, sizeof(TemplateParameterList*) * NumExpansions)
+  return new (C, ID,
+              additionalSizeToAlloc<TemplateParameterList *>(NumExpansions))
       TemplateTemplateParmDecl(nullptr, SourceLocation(), 0, 0, nullptr,
                                nullptr, NumExpansions, nullptr);
+}
+
+SourceLocation TemplateTemplateParmDecl::getDefaultArgumentLoc() const {
+  return hasDefaultArgument() ? getDefaultArgument().getLocation()
+                              : SourceLocation();
+}
+
+void TemplateTemplateParmDecl::setDefaultArgument(
+    const ASTContext &C, const TemplateArgumentLoc &DefArg) {
+  if (DefArg.getArgument().isNull())
+    DefaultArgument.set(nullptr);
+  else
+    DefaultArgument.set(new (C) TemplateArgumentLoc(DefArg));
 }
 
 //===----------------------------------------------------------------------===//
 // TemplateArgumentList Implementation
 //===----------------------------------------------------------------------===//
+TemplateArgumentList::TemplateArgumentList(const TemplateArgument *Args,
+                                           unsigned NumArgs)
+    : Arguments(getTrailingObjects<TemplateArgument>()), NumArguments(NumArgs) {
+  std::uninitialized_copy(Args, Args + NumArgs,
+                          getTrailingObjects<TemplateArgument>());
+}
+
 TemplateArgumentList *
 TemplateArgumentList::CreateCopy(ASTContext &Context,
                                  const TemplateArgument *Args,
                                  unsigned NumArgs) {
-  std::size_t Size = sizeof(TemplateArgumentList)
-                   + NumArgs * sizeof(TemplateArgument);
-  void *Mem = Context.Allocate(Size);
-  TemplateArgument *StoredArgs 
-    = reinterpret_cast<TemplateArgument *>(
-                                static_cast<TemplateArgumentList *>(Mem) + 1);
-  std::uninitialized_copy(Args, Args + NumArgs, StoredArgs);
-  return new (Mem) TemplateArgumentList(StoredArgs, NumArgs, true);
+  void *Mem = Context.Allocate(totalSizeToAlloc<TemplateArgument>(NumArgs));
+  return new (Mem) TemplateArgumentList(Args, NumArgs);
 }
 
 FunctionTemplateSpecializationInfo *

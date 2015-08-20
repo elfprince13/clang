@@ -96,10 +96,12 @@ llvm::Value *CodeGenFunction::EvaluateExprAsBool(const Expr *E) {
   }
 
   QualType BoolTy = getContext().BoolTy;
+  SourceLocation Loc = E->getExprLoc();
   if (!E->getType()->isAnyComplexType())
-    return EmitScalarConversion(EmitScalarExpr(E), E->getType(), BoolTy);
+    return EmitScalarConversion(EmitScalarExpr(E), E->getType(), BoolTy, Loc);
 
-  return EmitComplexToScalarConversion(EmitComplexExpr(E), E->getType(),BoolTy);
+  return EmitComplexToScalarConversion(EmitComplexExpr(E), E->getType(), BoolTy,
+                                       Loc);
 }
 
 /// EmitIgnoredExpr - Emit code to compute the specified expression,
@@ -535,7 +537,7 @@ void CodeGenFunction::EmitTypeCheck(TypeCheckKind TCK, SourceLocation Loc,
     llvm::Value *Min = Builder.getFalse();
     llvm::Value *CastAddr = Builder.CreateBitCast(Address, Int8PtrTy);
     llvm::Value *LargeEnough =
-        Builder.CreateICmpUGE(Builder.CreateCall2(F, CastAddr, Min),
+        Builder.CreateICmpUGE(Builder.CreateCall(F, {CastAddr, Min}),
                               llvm::ConstantInt::get(IntPtrTy, Size));
     Checks.push_back(std::make_pair(LargeEnough, SanitizerKind::ObjectSize));
   }
@@ -1147,16 +1149,8 @@ llvm::Value *CodeGenFunction::EmitLoadOfScalar(llvm::Value *Addr, bool Volatile,
       llvm::Value *LoadVal = Builder.CreateLoad(Cast, Volatile, "loadVec4");
 
       // Shuffle vector to get vec3.
-      llvm::Constant *Mask[] = {
-        llvm::ConstantInt::get(llvm::Type::getInt32Ty(getLLVMContext()), 0),
-        llvm::ConstantInt::get(llvm::Type::getInt32Ty(getLLVMContext()), 1),
-        llvm::ConstantInt::get(llvm::Type::getInt32Ty(getLLVMContext()), 2)
-      };
-
-      llvm::Value *MaskV = llvm::ConstantVector::get(Mask);
-      V = Builder.CreateShuffleVector(LoadVal,
-                                      llvm::UndefValue::get(vec4Ty),
-                                      MaskV, "extractVec");
+      V = Builder.CreateShuffleVector(LoadVal, llvm::UndefValue::get(vec4Ty),
+                                      {0, 1, 2}, "extractVec");
       return EmitFromMemory(V, Ty);
     }
   }
@@ -1253,18 +1247,10 @@ void CodeGenFunction::EmitStoreOfScalar(llvm::Value *Value, llvm::Value *Addr,
     auto *VecTy = cast<llvm::VectorType>(SrcTy);
     // Handle vec3 special.
     if (VecTy->getNumElements() == 3) {
-      llvm::LLVMContext &VMContext = getLLVMContext();
-
       // Our source is a vec3, do a shuffle vector to make it a vec4.
-      SmallVector<llvm::Constant*, 4> Mask;
-      Mask.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(VMContext),
-                                            0));
-      Mask.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(VMContext),
-                                            1));
-      Mask.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(VMContext),
-                                            2));
-      Mask.push_back(llvm::UndefValue::get(llvm::Type::getInt32Ty(VMContext)));
-
+      llvm::Constant *Mask[] = {Builder.getInt32(0), Builder.getInt32(1),
+                                Builder.getInt32(2),
+                                llvm::UndefValue::get(Builder.getInt32Ty())};
       llvm::Value *MaskV = llvm::ConstantVector::get(Mask);
       Value = Builder.CreateShuffleVector(Value,
                                           llvm::UndefValue::get(VecTy),
@@ -1356,14 +1342,15 @@ RValue CodeGenFunction::EmitLoadOfLValue(LValue LV, SourceLocation Loc) {
 
 RValue CodeGenFunction::EmitLoadOfBitfieldLValue(LValue LV) {
   const CGBitFieldInfo &Info = LV.getBitFieldInfo();
+  CharUnits Align = LV.getAlignment().alignmentAtOffset(Info.StorageOffset);
 
   // Get the output type.
   llvm::Type *ResLTy = ConvertType(LV.getType());
 
   llvm::Value *Ptr = LV.getBitFieldAddr();
-  llvm::Value *Val = Builder.CreateLoad(Ptr, LV.isVolatileQualified(),
-                                        "bf.load");
-  cast<llvm::LoadInst>(Val)->setAlignment(Info.StorageAlignment);
+  llvm::Value *Val = Builder.CreateAlignedLoad(Ptr, Align.getQuantity(),
+                                               LV.isVolatileQualified(),
+                                               "bf.load");
 
   if (Info.IsSigned) {
     assert(static_cast<unsigned>(Info.Offset + Info.Size) <= Info.StorageSize);
@@ -1559,6 +1546,7 @@ void CodeGenFunction::EmitStoreThroughLValue(RValue Src, LValue Dst,
 void CodeGenFunction::EmitStoreThroughBitfieldLValue(RValue Src, LValue Dst,
                                                      llvm::Value **Result) {
   const CGBitFieldInfo &Info = Dst.getBitFieldInfo();
+  CharUnits Align = Dst.getAlignment().alignmentAtOffset(Info.StorageOffset);
   llvm::Type *ResLTy = ConvertTypeForMem(Dst.getType());
   llvm::Value *Ptr = Dst.getBitFieldAddr();
 
@@ -1575,9 +1563,9 @@ void CodeGenFunction::EmitStoreThroughBitfieldLValue(RValue Src, LValue Dst,
   // and mask together with source before storing.
   if (Info.StorageSize != Info.Size) {
     assert(Info.StorageSize > Info.Size && "Invalid bitfield size.");
-    llvm::Value *Val = Builder.CreateLoad(Ptr, Dst.isVolatileQualified(),
-                                          "bf.load");
-    cast<llvm::LoadInst>(Val)->setAlignment(Info.StorageAlignment);
+    llvm::Value *Val = Builder.CreateAlignedLoad(Ptr, Align.getQuantity(),
+                                                 Dst.isVolatileQualified(),
+                                                 "bf.load");
 
     // Mask the source value as needed.
     if (!hasBooleanRepresentation(Dst.getType()))
@@ -1603,9 +1591,8 @@ void CodeGenFunction::EmitStoreThroughBitfieldLValue(RValue Src, LValue Dst,
   }
 
   // Write the new value back out.
-  llvm::StoreInst *Store = Builder.CreateStore(SrcVal, Ptr,
-                                               Dst.isVolatileQualified());
-  Store->setAlignment(Info.StorageAlignment);
+  Builder.CreateAlignedStore(SrcVal, Ptr, Align.getQuantity(),
+                             Dst.isVolatileQualified());
 
   // Return the new value of the bit-field, if requested.
   if (Result) {
@@ -1720,8 +1707,8 @@ void CodeGenFunction::EmitStoreThroughGlobalRegLValue(RValue Src, LValue Dst) {
   llvm::Value *Value = Src.getScalarVal();
   if (OrigTy->isPointerTy())
     Value = Builder.CreatePtrToInt(Value, Ty);
-  Builder.CreateCall2(F, llvm::MetadataAsValue::get(Ty->getContext(), RegName),
-                      Value);
+  Builder.CreateCall(
+      F, {llvm::MetadataAsValue::get(Ty->getContext(), RegName), Value});
 }
 
 // setObjCGCLValueClass - sets class of the lvalue for the purpose of
@@ -2300,14 +2287,23 @@ void CodeGenFunction::EmitCheck(
 
   llvm::Value *FatalCond = nullptr;
   llvm::Value *RecoverableCond = nullptr;
+  llvm::Value *TrapCond = nullptr;
   for (int i = 0, n = Checked.size(); i < n; ++i) {
     llvm::Value *Check = Checked[i].first;
+    // -fsanitize-trap= overrides -fsanitize-recover=.
     llvm::Value *&Cond =
-        CGM.getCodeGenOpts().SanitizeRecover.has(Checked[i].second)
-            ? RecoverableCond
-            : FatalCond;
+        CGM.getCodeGenOpts().SanitizeTrap.has(Checked[i].second)
+            ? TrapCond
+            : CGM.getCodeGenOpts().SanitizeRecover.has(Checked[i].second)
+                  ? RecoverableCond
+                  : FatalCond;
     Cond = Cond ? Builder.CreateAnd(Cond, Check) : Check;
   }
+
+  if (TrapCond)
+    EmitTrapCheck(TrapCond);
+  if (!FatalCond && !RecoverableCond)
+    return;
 
   llvm::Value *JointCond;
   if (FatalCond && RecoverableCond)
@@ -2325,15 +2321,6 @@ void CodeGenFunction::EmitCheck(
     assert(SanOpts.has(Checked[i].second));
   }
 #endif
-
-  if (CGM.getCodeGenOpts().SanitizeUndefinedTrapOnError) {
-    assert(RecoverKind != CheckRecoverableKind::AlwaysRecoverable &&
-           "Runtime call required for AlwaysRecoverable kind!");
-    // Assume that -fsanitize-undefined-trap-on-error overrides
-    // -fsanitize-recover= options, as we can only print meaningful error
-    // message and recover if we have a runtime support.
-    return EmitTrapCheck(JointCond);
-  }
 
   llvm::BasicBlock *Cont = createBasicBlock("cont");
   llvm::BasicBlock *Handlers = createBasicBlock("handler." + CheckName);
@@ -2403,8 +2390,7 @@ void CodeGenFunction::EmitTrapCheck(llvm::Value *Checked) {
     TrapBB = createBasicBlock("trap");
     Builder.CreateCondBr(Checked, Cont, TrapBB);
     EmitBlock(TrapBB);
-    llvm::Value *F = CGM.getIntrinsic(llvm::Intrinsic::trap);
-    llvm::CallInst *TrapCall = Builder.CreateCall(F);
+    llvm::CallInst *TrapCall = EmitTrapCall(llvm::Intrinsic::trap);
     TrapCall->setDoesNotReturn();
     TrapCall->setDoesNotThrow();
     Builder.CreateUnreachable();
@@ -2413,6 +2399,17 @@ void CodeGenFunction::EmitTrapCheck(llvm::Value *Checked) {
   }
 
   EmitBlock(Cont);
+}
+
+llvm::CallInst *CodeGenFunction::EmitTrapCall(llvm::Intrinsic::ID IntrID) {
+  llvm::CallInst *TrapCall = Builder.CreateCall(CGM.getIntrinsic(IntrID));
+
+  if (!CGM.getCodeGenOpts().TrapFuncName.empty())
+    TrapCall->addAttribute(llvm::AttributeSet::FunctionIndex,
+                           "trap-func-name",
+                           CGM.getCodeGenOpts().TrapFuncName);
+
+  return TrapCall;
 }
 
 /// isSimpleArrayDecayOperand - If the specified expr is a simple decay from an
@@ -2562,16 +2559,6 @@ LValue CodeGenFunction::EmitArraySubscriptExpr(const ArraySubscriptExpr *E,
   return LV;
 }
 
-static
-llvm::Constant *GenerateConstantVector(CGBuilderTy &Builder,
-                                       SmallVectorImpl<unsigned> &Elts) {
-  SmallVector<llvm::Constant*, 4> CElts;
-  for (unsigned i = 0, e = Elts.size(); i != e; ++i)
-    CElts.push_back(Builder.getInt32(Elts[i]));
-
-  return llvm::ConstantVector::get(CElts);
-}
-
 LValue CodeGenFunction::
 EmitExtVectorElementExpr(const ExtVectorElementExpr *E) {
   // Emit the base vector as an l-value.
@@ -2606,11 +2593,12 @@ EmitExtVectorElementExpr(const ExtVectorElementExpr *E) {
     E->getType().withCVRQualifiers(Base.getQuals().getCVRQualifiers());
 
   // Encode the element access list into a vector of unsigned indices.
-  SmallVector<unsigned, 4> Indices;
+  SmallVector<uint32_t, 4> Indices;
   E->getEncodedElementAccess(Indices);
 
   if (Base.isSimple()) {
-    llvm::Constant *CV = GenerateConstantVector(Builder, Indices);
+    llvm::Constant *CV =
+        llvm::ConstantDataVector::get(getLLVMContext(), Indices);
     return LValue::MakeExtVectorElt(Base.getAddress(), CV, type,
                                     Base.getAlignment());
   }
@@ -3035,7 +3023,8 @@ LValue CodeGenFunction::EmitCastLValue(const CastExpr *E) {
                     Derived, E->getType());
 
     if (SanOpts.has(SanitizerKind::CFIDerivedCast))
-      EmitVTablePtrCheckForCast(E->getType(), Derived, /*MayBeNull=*/false);
+      EmitVTablePtrCheckForCast(E->getType(), Derived, /*MayBeNull=*/false,
+                                CFITCK_DerivedCast, E->getLocStart());
 
     return MakeAddrLValue(Derived, E->getType());
   }
@@ -3048,7 +3037,8 @@ LValue CodeGenFunction::EmitCastLValue(const CastExpr *E) {
                                            ConvertType(CE->getTypeAsWritten()));
 
     if (SanOpts.has(SanitizerKind::CFIUnrelatedCast))
-      EmitVTablePtrCheckForCast(E->getType(), V, /*MayBeNull=*/false);
+      EmitVTablePtrCheckForCast(E->getType(), V, /*MayBeNull=*/false,
+                                CFITCK_UnrelatedCast, E->getLocStart());
 
     return MakeAddrLValue(V, E->getType());
   }
@@ -3399,8 +3389,8 @@ RValue CodeGenFunction::EmitCall(QualType CalleeType, llvm::Value *Callee,
   if (Chain)
     Args.add(RValue::get(Builder.CreateBitCast(Chain, CGM.VoidPtrTy)),
              CGM.getContext().VoidPtrTy);
-  EmitCallArgs(Args, dyn_cast<FunctionProtoType>(FnType), E->arg_begin(),
-               E->arg_end(), E->getDirectCallee(), /*ParamsToSkip*/ 0);
+  EmitCallArgs(Args, dyn_cast<FunctionProtoType>(FnType), E->arguments(),
+               E->getDirectCallee(), /*ParamsToSkip*/ 0);
 
   const CGFunctionInfo &FnInfo = CGM.getTypes().arrangeFreeFunctionCall(
       Args, FnType, /*isChainCall=*/Chain);

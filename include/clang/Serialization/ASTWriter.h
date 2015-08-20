@@ -17,6 +17,7 @@
 #include "clang/AST/ASTMutationListener.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclarationName.h"
+#include "clang/Frontend/PCHContainerOperations.h"
 #include "clang/AST/TemplateBase.h"
 #include "clang/Sema/SemaConsumer.h"
 #include "clang/Serialization/ASTBitCodes.h"
@@ -41,6 +42,7 @@ namespace llvm {
 namespace clang {
 
 class ASTContext;
+class Attr;
 class NestedNameSpecifier;
 class CXXBaseSpecifier;
 class CXXCtorInitializer;
@@ -59,6 +61,7 @@ class Module;
 class PreprocessedEntity;
 class PreprocessingRecord;
 class Preprocessor;
+class RecordDecl;
 class Sema;
 class SourceManager;
 struct StoredDeclsList;
@@ -115,6 +118,12 @@ private:
 
   /// \brief The base directory for any relative paths we emit.
   std::string BaseDirectory;
+
+  /// \brief Indicates whether timestamps should be written to the produced
+  /// module file. This is the case for files implicitly written to the
+  /// module cache, where we need the timestamps to determine if the module
+  /// file is up to date, but not otherwise.
+  bool IncludeTimestamps;
 
   /// \brief Indicates when the AST writing is actively performing
   /// serialization, rather than just queueing updates.
@@ -300,6 +309,8 @@ private:
       void *Type;
       unsigned Loc;
       unsigned Val;
+      Module *Mod;
+      const Attr *Attribute;
     };
 
   public:
@@ -311,6 +322,10 @@ private:
         : Kind(Kind), Loc(Loc.getRawEncoding()) {}
     DeclUpdate(unsigned Kind, unsigned Val)
         : Kind(Kind), Val(Val) {}
+    DeclUpdate(unsigned Kind, Module *M)
+          : Kind(Kind), Mod(M) {}
+    DeclUpdate(unsigned Kind, const Attr *Attribute)
+          : Kind(Kind), Attribute(Attribute) {}
 
     unsigned getKind() const { return Kind; }
     const Decl *getDecl() const { return Dcl; }
@@ -319,6 +334,8 @@ private:
       return SourceLocation::getFromRawEncoding(Loc);
     }
     unsigned getNumber() const { return Val; }
+    Module *getModule() const { return Mod; }
+    const Attr *getAttr() const { return Attribute; }
   };
 
   typedef SmallVector<DeclUpdate, 1> UpdateRecord;
@@ -387,7 +404,7 @@ private:
                  
   /// \brief The set of declarations that may have redeclaration chains that
   /// need to be serialized.
-  llvm::SmallSetVector<Decl *, 4> Redeclarations;
+  llvm::SmallVector<const Decl *, 16> Redeclarations;
                                       
   /// \brief Statements that we've encountered while serializing a
   /// declaration or type.
@@ -476,7 +493,7 @@ private:
                     
   /// \brief Retrieve or create a submodule ID for this module.
   unsigned getSubmoduleID(Module *Mod);
-                    
+
   /// \brief Write the given subexpression to the bitstream.
   void WriteSubStmt(Stmt *S,
                     llvm::DenseMap<Stmt *, uint64_t> &SubStmtEntries,
@@ -558,10 +575,15 @@ private:
 public:
   /// \brief Create a new precompiled header writer that outputs to
   /// the given bitstream.
-  ASTWriter(llvm::BitstreamWriter &Stream);
+  ASTWriter(llvm::BitstreamWriter &Stream, bool IncludeTimestamps = true);
   ~ASTWriter() override;
 
   const LangOptions &getLangOpts() const;
+
+  /// \brief Get a timestamp for output into the AST file. The actual timestamp
+  /// of the specified file may be ignored if we have been instructed to not
+  /// include timestamps in the output file.
+  time_t getTimestampForOutput(const FileEntry *E) const;
 
   /// \brief Write a precompiled header for the given semantic analysis.
   ///
@@ -745,9 +767,10 @@ public:
   /// source location.
   serialization::SubmoduleID inferSubmoduleIDFromLocation(SourceLocation Loc);
 
-  /// \brief Retrieve a submodule ID for this module.
-  /// Returns 0 If no ID has been associated with the module.
-  unsigned getExistingSubmoduleID(Module *Mod) const;
+  /// \brief Retrieve or create a submodule ID for this module, or return 0 if
+  /// the submodule is neither local (a submodle of the currently-written module)
+  /// nor from an imported module.
+  unsigned getLocalOrImportedSubmoduleID(Module *Mod);
 
   /// \brief Note that the identifier II occurs at the given offset
   /// within the identifier table.
@@ -854,8 +877,9 @@ public:
                                     const ObjCCategoryDecl *ClassExt) override;
   void DeclarationMarkedUsed(const Decl *D) override;
   void DeclarationMarkedOpenMPThreadPrivate(const Decl *D) override;
-  void RedefinedHiddenDefinition(const NamedDecl *D,
-                                 SourceLocation Loc) override;
+  void RedefinedHiddenDefinition(const NamedDecl *D, Module *M) override;
+  void AddedAttributeToRecord(const Attr *Attr,
+                              const RecordDecl *Record) override;
 };
 
 /// \brief AST and semantic-analysis consumer that generates a
@@ -865,30 +889,29 @@ class PCHGenerator : public SemaConsumer {
   std::string OutputFile;
   clang::Module *Module;
   std::string isysroot;
-  raw_ostream *Out;
   Sema *SemaPtr;
-  SmallVector<char, 128> Buffer;
+  std::shared_ptr<PCHBuffer> Buffer;
   llvm::BitstreamWriter Stream;
   ASTWriter Writer;
   bool AllowASTWithErrors;
-  bool HasEmittedPCH;
 
 protected:
   ASTWriter &getWriter() { return Writer; }
   const ASTWriter &getWriter() const { return Writer; }
+  SmallVectorImpl<char> &getPCH() const { return Buffer->Data; }
 
 public:
   PCHGenerator(const Preprocessor &PP, StringRef OutputFile,
-               clang::Module *Module,
-               StringRef isysroot, raw_ostream *Out,
-               bool AllowASTWithErrors = false);
+               clang::Module *Module, StringRef isysroot,
+               std::shared_ptr<PCHBuffer> Buffer,
+               bool AllowASTWithErrors = false,
+               bool IncludeTimestamps = true);
   ~PCHGenerator() override;
   void InitializeSema(Sema &S) override { SemaPtr = &S; }
   void HandleTranslationUnit(ASTContext &Ctx) override;
   ASTMutationListener *GetASTMutationListener() override;
   ASTDeserializationListener *GetASTDeserializationListener() override;
-
-  bool hasEmittedPCH() const { return HasEmittedPCH; }
+  bool hasEmittedPCH() const { return Buffer->IsComplete; }
 };
 
 } // end namespace clang
