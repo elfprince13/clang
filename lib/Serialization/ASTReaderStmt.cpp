@@ -237,17 +237,40 @@ void ASTStmtReader::VisitDoStmt(DoStmt *S) {
 void ASTStmtReader::VisitSkeletonStmt(SkeletonStmt *S){
 	VisitStmt(S);
 	
-	SmallVector<Expr *, 16> Params;
+	SmallVector<SkeletonStmt::SkeletonArg, 16> Params;
 	SmallVector<IdentifierInfo *, 16> ParamNames;
-	unsigned NumParams = Record[Idx++];
-	for(int i = NumParams; i; i--) Params.push_back(Reader.ReadSubExpr());
+	
+	S->setKind(Reader.GetIdentifierInfo(F, Record, Idx));
+	SkeletonHandler handler = SkeletonStmt::GetHandlerForSkeleton(*S->getKind());
+	assert(handler.isValid);
+	S->setHandler(handler);
+	S->setName(Reader.GetIdentifierInfo(F, Record, Idx));
+	
+	
+	size_t NumParams = Record[Idx++];
+	for(size_t i = 0; i < NumParams; i++){
+		ParamNames.push_back(Reader.GetIdentifierInfo(F, Record, Idx));
+		SkeletonStmt::SkeletonArg ArgHere;
+		ArgHere.type = (SkeletonArgType)(Record[Idx++]); // We pushed it back like one, so it is.
+		assert(ArgHere.type == handler.GetTypeOfNthArg(i));
+		switch (ArgHere.type) {
+			case ARG_IS_IDENT:
+				ArgHere.data.ident = Reader.GetIdentifierInfo(F, Record, Idx);
+				break;
+			case ARG_IS_EXPR:
+				ArgHere.data.expr = Reader.ReadSubExpr();
+				break;
+			case ARG_IS_STMT:
+				ArgHere.data.stmt = Reader.ReadSubStmt();
+				break;
+			default:
+				assert(false);
+		}
+		Params.push_back(ArgHere);
+	}
 	
 	Stmt *Body = Reader.ReadSubStmt();
 	
-	S->setKind(Reader.GetIdentifierInfo(F, Record, Idx));
-	S->setName(Reader.GetIdentifierInfo(F, Record, Idx));
-	
-	for(int i = NumParams; i; i--) ParamNames.push_back(Reader.GetIdentifierInfo(F, Record, Idx));
 	
 	S->setParams(Reader.getContext(), ParamNames.data(), Params.data(), NumParams);
 	S->setBody(Body);

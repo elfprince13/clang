@@ -1836,6 +1836,7 @@ static void ParsePreprocessorOutputArgs(PreprocessorOutputOptions &Opts,
   case frontend::ASTDeclList:
   case frontend::ASTDump:
   case frontend::ASTPrint:
+  case frontend::ASTSExp: // Show the AST in S-Expression format
   case frontend::ASTView:
   case frontend::EmitAssembly:
   case frontend::EmitBC:
@@ -1976,9 +1977,8 @@ bool CompilerInvocation::CreateFromArgs(CompilerInvocation &Res,
   // PCH file and find the original header name. Remove the need to do that in
   // ParsePreprocessorArgs and remove the FileManager
   // parameters from the function and the "FileManager.h" #include.
-  FileManager FileMgr(Res.getFileSystemOpts());
-  ParsePreprocessorArgs(Res.getPreprocessorOpts(), *Args, FileMgr, Diags);
-  ParsePreprocessorOutputArgs(Res.getPreprocessorOutputOpts(), *Args,
+  ParsePreprocessorArgs(Res.getPreprocessorOpts(), Args, FileMgr, Diags);
+  ParsePreprocessorOutputArgs(Res.getPreprocessorOutputOpts(), Args,
                               Res.getFrontendOpts().ProgramAction);
   return Success;
 }

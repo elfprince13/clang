@@ -483,6 +483,7 @@ namespace  {
     void VisitAttributedStmt(const AttributedStmt *Node);
     void VisitLabelStmt(const LabelStmt *Node);
     void VisitGotoStmt(const GotoStmt *Node);
+	void VisitSkeletonStmt(const SkeletonStmt *Node);
     void VisitCXXCatchStmt(const CXXCatchStmt *Node);
 
     // Exprs
@@ -1676,6 +1677,17 @@ void ASTDumper::VisitGotoStmt(const GotoStmt *Node) {
   VisitStmt(Node);
   OS << " '" << Node->getLabel()->getName() << "'";
   dumpPointer(Node->getLabel());
+}
+
+void ASTDumper::VisitSkeletonStmt(const SkeletonStmt *Node) {
+	VisitStmt(Node);
+	OS << " @" << Node->getKind()->getName() << " ";
+	dumpPointer(Node->getKind());
+	if(Node->getName() != nullptr){
+		OS << " (" << Node->getName()->getName() << ") ";
+		dumpPointer(Node->getName());
+	}
+	
 }
 
 void ASTDumper::VisitCXXCatchStmt(const CXXCatchStmt *Node) {

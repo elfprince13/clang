@@ -10,7 +10,6 @@
 #define LLVM_SkelParserDefs_h
 
 typedef enum {
-	ARG_IS_DECL,
 	ARG_IS_IDENT,
 	ARG_IS_EXPR,
 	ARG_IS_STMT,
@@ -18,8 +17,12 @@ typedef enum {
 } SkeletonArgType;
 typedef struct _SkeletonHandler {
 	bool isValid;
-	SkeletonArgType (*GetTypeOfNthArg)(int n);
-	_SkeletonHandler(SkeletonArgType (*NthArgHandler)(int n) = nullptr, bool valid = false) : isValid(valid), GetTypeOfNthArg(NthArgHandler) {}
+	SkeletonArgType (*GetTypeOfNthArg)(size_t n);
+	const char * (*GetNameOfNthArg)(size_t n);
+	_SkeletonHandler(SkeletonArgType (*NthArgTyper)(size_t n) = nullptr,
+					 const char * (*NthArgNamer)(size_t n) = nullptr,
+					 bool valid = false)
+	: isValid(valid), GetTypeOfNthArg(NthArgTyper), GetNameOfNthArg(NthArgNamer) {}
 } SkeletonHandler;
 
 #endif

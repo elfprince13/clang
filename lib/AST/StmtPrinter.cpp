@@ -293,9 +293,23 @@ void StmtPrinter::VisitSkeletonStmt(SkeletonStmt *Node) {
  }
 	OS << SExpR();
 	OS << SExpCh(" ","") << SExpL() << "\n";
-	for(auto *I : Node->parameters()){
+	for(size_t i = 0, n = Node->getNumParams(); i < n; i++){
+		SkeletonStmt::SkeletonArg I = Node->getParams()[i];
 		Indent(2) << "[";
-		PrintExpr(static_cast<Expr*>(I));
+		switch (I.type) {
+			case ARG_IS_EXPR:
+				PrintExpr(I.data.expr);
+				break;
+			case ARG_IS_STMT:
+				PrintStmt(I.data.stmt);
+				break;
+			case ARG_IS_IDENT:
+				OS << I.data.ident->getName();
+			default:
+				assert(false);
+				break;
+		}
+
 		OS << "]\n";
 	}
 	if(SExp()){

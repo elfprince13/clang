@@ -1,7 +1,7 @@
 int main(int argc, char * argv[]){
 	int a = 5, x(6), y, z;
 	int p, *q = &p;
-	@Loop2dAccumulate(test_skel)[test1: 5][test2: a]{
+	@Loop2dAccumulate(test_skel)[5][a]{
 		a++; 
 	}
 
@@ -56,9 +56,9 @@ test_label:
 	if(a == 6) goto *&&test_label;
 	
 	int c[2][2] = {{0,1},{0,1}};
-	@Loop2dAccumulate[test1: 5]
-			[test2 = 5]
-			[test3: argc]{
+	@Loop2dAccumulate[5]
+			[5]
+			[argc]{
 		int i = 0, j = 0;
 		c[i][j] += c[i][j];
 	}

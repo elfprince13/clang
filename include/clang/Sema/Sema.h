@@ -3293,7 +3293,7 @@ public:
 	
 	StmtResult ActOnSkeletonStmt(SourceLocation AtLoc, SourceLocation SkelLoc,
 									   IdentifierInfo *skelName, IdentifierInfo *blockName,
-									   SmallVector<IdentifierInfo*, 16> paramNames, SmallVector<Expr*, 16> paramExprs,
+								 SmallVector<IdentifierInfo*, 16> paramNames, SmallVector<SkeletonStmt::SkeletonArg, 16> params,
 								 Stmt *Body, SkeletonHandler handler);
 	
   StmtResult ActOnForStmt(SourceLocation ForLoc,

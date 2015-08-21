@@ -162,14 +162,31 @@ void ASTStmtWriter::VisitDoStmt(DoStmt *S) {
 
 void ASTStmtWriter::VisitSkeletonStmt(SkeletonStmt *S){
 	VisitStmt(S);
-	int n = S->getNumParams();
-	Record.push_back(n);
-	for (auto *CS : S->children())
-		Writer.AddStmt(CS);
 	
 	Writer.AddIdentifierRef(S->getKind(), Record);
 	Writer.AddIdentifierRef(S->getName(), Record);
-	for(int i = 0; i < n; i++) Writer.AddIdentifierRef(S->getParamNames()[i], Record);
+	size_t n = S->getNumParams();
+	Record.push_back(n);
+	for(size_t i = 0; i < n; i++){
+		Writer.AddIdentifierRef(S->getParamNames()[i], Record);
+		SkeletonStmt::SkeletonArg Param = S->getParams()[i];
+		Record.push_back(Param.type);
+		switch (Param.type) {
+			case ARG_IS_IDENT:
+				Writer.AddIdentifierRef(Param.data.ident, Record);
+				break;
+			case ARG_IS_EXPR:
+				Writer.AddStmt(Param.data.expr);
+				break;
+			case ARG_IS_STMT:
+				Writer.AddStmt(Param.data.stmt);
+				break;
+			default:
+				assert(false);
+		}
+	}
+	Writer.AddStmt(S->getBody());
+	
 	
 	Writer.AddSourceLocation(S->getAtLoc(), Record);
 	Writer.AddSourceLocation(S->getSkelLoc(), Record);

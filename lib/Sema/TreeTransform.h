@@ -1201,12 +1201,11 @@ public:
                                  Cond, RParenLoc);
   }
 
-	typedef Stmt* (*SkeletonHandler)(SkeletonStmt*);
 	StmtResult RebuildSkeletonStmt(SourceLocation AtLoc, SourceLocation SkelLoc,
 								   IdentifierInfo *skelName, IdentifierInfo *blockName,
-								   SmallVector<IdentifierInfo*, 16> paramNames, SmallVector<Expr*, 16> paramExprs,
+								   SmallVector<IdentifierInfo*, 16> paramNames, SmallVector<SkeletonStmt::SkeletonArg, 16> params,
 								   Stmt *Body, SkeletonHandler handler) {
-		return getSema().ActOnSkeletonStmt(AtLoc, SkelLoc, skelName, blockName, paramNames, paramExprs, Body, handler);
+		return getSema().ActOnSkeletonStmt(AtLoc, SkelLoc, skelName, blockName, paramNames, params, Body, handler);
 	}
 
   /// \brief Build a new for statement.
@@ -6145,26 +6144,50 @@ TreeTransform<Derived>::TransformSkeletonStmt(SkeletonStmt *S){
 	bool SubStmtInvalid = false;
 	bool SubStmtChanged = false;
 	
-	SmallVector<Expr*, 16> SubExprs;
+	SmallVector<SkeletonStmt::SkeletonArg, 16> Params;
 	SmallVector<IdentifierInfo*, 16> ParamNames;
 	
-	for(int i = 0, n = S->getNumParams(); i < n; i++ ) ParamNames.push_back(S->getParamNames()[i]);
+	for(size_t i = 0, n = S->getNumParams(); i < n; i++ ) ParamNames.push_back(S->getParamNames()[i]);
 	
-	for(auto *B : S->parameters()) {
-		StmtResult Result = getDerived().TransformStmt(B);
-		if (Result.isInvalid()) {
-			// Immediately fail if this was a DeclStmt, since it's very
-			// likely that this will cause problems for future statements.
-			if (isa<DeclStmt>(B))
-				return StmtError();
-			
-			// Otherwise, just keep processing substatements and fail later.
-			SubStmtInvalid = true;
-			continue;
+	for(size_t i = 0, n = S->getNumParams(); i < n; i++) {
+		SkeletonStmt::SkeletonArg B = (S->getParams())[i];
+		SkeletonStmt::SkeletonArg Res;
+		Res.type = B.type;
+		switch(B.type){
+			case ARG_IS_IDENT:
+				Res.data.ident = B.data.ident;
+				Params.push_back(Res);
+				break;
+			case ARG_IS_EXPR: {
+				ExprResult Result = getDerived().TransformExpr(B.data.expr);
+				if (Result.isInvalid()) {
+					SubStmtInvalid = true;
+					continue;
+				}
+				
+				SubStmtChanged = SubStmtChanged || Result.get() != B.data.expr;
+				Res.data.expr = Result.get();
+				Params.push_back(Res);
+			} break;
+			case ARG_IS_STMT: {
+				StmtResult Result = getDerived().TransformStmt(B.data.stmt);
+				if (Result.isInvalid()) {
+					// Immediately fail if this was a DeclStmt, since it's very
+					// likely that this will cause problems for future statements.
+					if (isa<DeclStmt>(B.data.stmt))
+						return StmtError();
+					
+					// Otherwise, just keep processing substatements and fail later.
+					SubStmtInvalid = true;
+					continue;
+				}
+				
+				SubStmtChanged = SubStmtChanged || Result.get() != B.data.stmt;
+				Res.data.stmt = Result.get();
+				Params.push_back(Res);
+			} break;
+			case NO_SUCH_ARG: SubStmtInvalid = true;
 		}
-		
-		SubStmtChanged = SubStmtChanged || Result.get() != B;
-		SubExprs.push_back(Result.getAs<Expr>());
 	}
 	Stmt* Body = getDerived().TransformStmt(S->getBody()).get();
 	
@@ -6175,7 +6198,7 @@ TreeTransform<Derived>::TransformSkeletonStmt(SkeletonStmt *S){
 		!SubStmtChanged)
 		return S;
 	
-	return getDerived().RebuildSkeletonStmt(S->getAtLoc(), S->getSkelLoc(), S->getKind(), S->getName(), ParamNames, SubExprs, Body, S->getHandler() );
+	return getDerived().RebuildSkeletonStmt(S->getAtLoc(), S->getSkelLoc(), S->getKind(), S->getName(), ParamNames, Params, Body, S->getHandler() );
 }
 
 template<typename Derived>
