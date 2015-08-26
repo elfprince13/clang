@@ -298,13 +298,16 @@ void StmtPrinter::VisitSkeletonStmt(SkeletonStmt *Node) {
 		Indent(2) << "[";
 		switch (I.type) {
 			case ARG_IS_EXPR:
+				OS << "= ";
 				PrintExpr(I.data.expr);
 				break;
 			case ARG_IS_STMT:
 				PrintStmt(I.data.stmt);
 				break;
 			case ARG_IS_IDENT:
+				OS << "@ ";
 				OS << I.data.ident->getName();
+				break;
 			default:
 				assert(false);
 				break;

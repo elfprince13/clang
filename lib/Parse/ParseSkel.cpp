@@ -57,22 +57,9 @@ StmtResult Parser::ParseSkeleton(SourceLocation AtLoc){
 			T.consumeOpen();
 			
 			SkeletonStmt::SkeletonArg argHere;
-			
-			ExprResult er = ParseExpression();
-			if(er.isUsable()) {
-				FullExprArg FullExp(Actions.MakeFullExpr(er.get(), SkelLoc));
-				
-				argHere.data.expr = FullExp.get();
-				argHere.type = ARG_IS_EXPR;
-			} else {
-				//ret = StmtError(Diag(er.get()->getLocStart(), diag::err_expected_expression));
-				StmtResult sr = ParseStatement();
-				if(sr.isUsable()) {
-					argHere.data.stmt = sr.get();
-					argHere.type = ARG_IS_STMT;
-					
-				} else {
-					//ret = StmtError(Diag(sr.get()->getLocStart(), diag::err_expected_statement));
+			switch(Tok.getKind()){
+				case tok::at: {
+					ConsumeToken();
 					if(Tok.is(tok::identifier)) {
 						IdentifierInfo *ip = Tok.getIdentifierInfo();
 						ConsumeToken();
@@ -80,12 +67,37 @@ StmtResult Parser::ParseSkeleton(SourceLocation AtLoc){
 						argHere.data.ident = ip;
 						argHere.type = ARG_IS_IDENT;
 					} else {
-						//ret = StmtError(Diag(Tok, diag::err_expected_unqualified_id) << getLangOpts().CPlusPlus);
-						ret = StmtError(Diag(Tok, diag::err_expected_skeleton_argument));
+						ret = StmtError(Diag(Tok, diag::err_expected_unqualified_id) << getLangOpts().CPlusPlus);
 						argHere.type = NO_SUCH_ARG;
 						argHere.data.ident = nullptr; // data is a union type, so they should all be nulled.
 					}
-				}
+				} break;
+				case tok::equal: {
+					ConsumeToken();
+					ExprResult er = ParseExpression();
+					if(er.isUsable()) {
+						FullExprArg FullExp(Actions.MakeFullExpr(er.get(), SkelLoc));
+						
+						argHere.data.expr = FullExp.get();
+						argHere.type = ARG_IS_EXPR;
+					} else {
+						ret = StmtError(Diag(er.get()->getLocStart(), diag::err_expected_expression));
+						argHere.type = NO_SUCH_ARG;
+						argHere.data.expr = nullptr; // data is a union type, so they should all be nulled.
+					}
+				} break;
+				default: {
+					StmtResult sr = ParseStatement();
+					if(sr.isUsable()) {
+						argHere.data.stmt = sr.get();
+						argHere.type = ARG_IS_STMT;
+					} else {
+						ret = StmtError(Diag(sr.get()->getLocStart(), diag::err_expected_statement));
+						argHere.type = NO_SUCH_ARG;
+						argHere.data.stmt = nullptr; // data is a union type, so they should all be nulled.
+					}
+				} 
+					
 			}
 			
 			T.consumeClose();

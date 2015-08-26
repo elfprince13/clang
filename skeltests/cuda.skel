@@ -22,8 +22,6 @@ int cudaConfigureCall(dim3 gridSize, dim3 blockSize, size_t sharedSize = 0,
 
 ///////////////////////
 
-#include <stdio.h>
-
 __global__ void kernelTest(float * data, int start, int step, int end){
 	
 }
@@ -31,10 +29,11 @@ __global__ void kernelTest(float * data, int start, int step, int end){
 int main(int argc, char **argv){
 	kernelTest<<<128,1024>>>(nullptr, 0, 1, 0);
 	if((argc % 4) == 0){
-		@Loop2dAccumulate(test_loop)[i][0][argc][{argc--;}]{
-			printf(argv[i]);
+		@Loop2dAccumulate(test_loop)[@ I][= 0][=argc][{argc--;}]{
+			argv[argc - 1]++;
+			// need to support skeleton use in expression position as well as statement position.
 		}
 	} else {
-		printf("args not a multiple of 4: %d\n",argc);	
+		//printf("args not a multiple of 4: %d\n",argc);	
 	}
 }
