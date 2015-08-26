@@ -15,14 +15,4 @@ typedef enum {
 	ARG_IS_STMT,
 	NO_SUCH_ARG
 } SkeletonArgType;
-typedef struct _SkeletonHandler {
-	bool isValid;
-	SkeletonArgType (*GetTypeOfNthArg)(size_t n);
-	const char * (*GetNameOfNthArg)(size_t n);
-	_SkeletonHandler(SkeletonArgType (*NthArgTyper)(size_t n) = nullptr,
-					 const char * (*NthArgNamer)(size_t n) = nullptr,
-					 bool valid = false)
-	: isValid(valid), GetTypeOfNthArg(NthArgTyper), GetNameOfNthArg(NthArgNamer) {}
-} SkeletonHandler;
-
 #endif

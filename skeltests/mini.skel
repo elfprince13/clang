@@ -1,7 +1,7 @@
 #include <stdio.h>
 int main(int argc, char **argv){
 	if((argc % 4) == 0){
-		@Loop2dAccumulate(test-loop)[i=0][0][argc]{
+		@Loop2dAccumulate(test_loop)[i][0][argc]{
 			printf(argv[i]);
 		}
 	} else {

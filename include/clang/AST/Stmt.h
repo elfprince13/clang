@@ -1144,35 +1144,25 @@ private:
 	size_t numParams;
 	
 	SkeletonArg *Params;
-	IdentifierInfo **ParamNames;
 	
 	Stmt *body;
-	SkeletonHandler handler;
 public:
 	
 	/// \brief Build an empty skeleton statement.
 	explicit SkeletonStmt(EmptyShell Empty) :
 	Stmt(SkeletonStmtClass, Empty), kind(nullptr), name(nullptr),
-	numParams(0), Params(nullptr), ParamNames(nullptr),
-	body(nullptr), handler(nullptr,nullptr,false) { }
+	numParams(0), Params(nullptr), 	body(nullptr) { }
 	
 	SkeletonStmt(const ASTContext &C, SourceLocation atLoc, SourceLocation skelLoc, IdentifierInfo *skelName, IdentifierInfo *blockName,
-				 ArrayRef<IdentifierInfo*> paramNames,
-				 ArrayRef<SkeletonArg> params,
-				 Stmt *Body, SkeletonHandler handler);
+				 ArrayRef<SkeletonArg> params, Stmt *Body);
 	
 	static bool classof(const Stmt *T) {
 		return T->getStmtClass() == SkeletonStmtClass;
 	}
 	
-	static SkeletonHandler GetHandlerForSkeleton(const IdentifierInfo &kind);
-	
 	Stmt *getBody() { return body; }
 	const Stmt *getBody() const { return body; }
 	void setBody(Stmt *S){ body = S; }
-	
-	void setHandler(SkeletonHandler h){ handler = h; }
-	SkeletonHandler getHandler(){ return handler; }
 	
 	void setKind(IdentifierInfo *k){ kind = k; }
 	void setName(IdentifierInfo *n){ kind = name; }
@@ -1184,10 +1174,9 @@ public:
 	const IdentifierInfo* getName() const { return name; }
 	
 	int getNumParams(){ return numParams; }
-	IdentifierInfo * const* getParamNames() const { return ParamNames; }
 	const SkeletonArg * getParams() const { return Params; }
 	
-	void setParams(const ASTContext &C, IdentifierInfo **ParamNames, SkeletonArg *Params, size_t NumParams);
+	void setParams(const ASTContext &C, SkeletonArg *Params, size_t NumParams);
 	
 	void setAtLoc(SourceLocation al){ AtLoc = al; }
 	void setSkelLoc(SourceLocation sl){ SkelLoc = sl; }

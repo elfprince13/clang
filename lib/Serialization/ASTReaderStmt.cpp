@@ -241,18 +241,13 @@ void ASTStmtReader::VisitSkeletonStmt(SkeletonStmt *S){
 	SmallVector<IdentifierInfo *, 16> ParamNames;
 	
 	S->setKind(Reader.GetIdentifierInfo(F, Record, Idx));
-	SkeletonHandler handler = SkeletonStmt::GetHandlerForSkeleton(*S->getKind());
-	assert(handler.isValid);
-	S->setHandler(handler);
 	S->setName(Reader.GetIdentifierInfo(F, Record, Idx));
 	
 	
 	size_t NumParams = Record[Idx++];
 	for(size_t i = 0; i < NumParams; i++){
-		ParamNames.push_back(Reader.GetIdentifierInfo(F, Record, Idx));
 		SkeletonStmt::SkeletonArg ArgHere;
 		ArgHere.type = (SkeletonArgType)(Record[Idx++]); // We pushed it back like one, so it is.
-		assert(ArgHere.type == handler.GetTypeOfNthArg(i));
 		switch (ArgHere.type) {
 			case ARG_IS_IDENT:
 				ArgHere.data.ident = Reader.GetIdentifierInfo(F, Record, Idx);
@@ -272,7 +267,7 @@ void ASTStmtReader::VisitSkeletonStmt(SkeletonStmt *S){
 	Stmt *Body = Reader.ReadSubStmt();
 	
 	
-	S->setParams(Reader.getContext(), ParamNames.data(), Params.data(), NumParams);
+	S->setParams(Reader.getContext(), Params.data(), NumParams);
 	S->setBody(Body);
 	
 	S->setAtLoc(ReadSourceLocation(Record, Idx));

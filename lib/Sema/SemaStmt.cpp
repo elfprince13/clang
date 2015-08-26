@@ -1605,16 +1605,8 @@ void Sema::CheckBreakContinueBinding(Expr *E) {
 
 StmtResult Sema::ActOnSkeletonStmt(SourceLocation AtLoc, SourceLocation SkelLoc,
 								   IdentifierInfo *skelName, IdentifierInfo *blockName,
-								   SmallVector<IdentifierInfo*, 16> paramNames, SmallVector<SkeletonStmt::SkeletonArg, 16> params,
-								   Stmt *Body, SkeletonHandler handler) {
-	for(size_t i = 0, n = params.size(); i < n; i++){
-		const char * nameHere = handler.GetNameOfNthArg(i);
-		assert(nameHere != nullptr);
-		IdentifierInfo *ii = &Context.Idents.getOwn(nameHere);
-		paramNames.push_back(ii);
-	}
-	
-	SkeletonStmt *builtStmt = new (Context) SkeletonStmt(Context, AtLoc, SkelLoc, skelName, blockName, paramNames, params, Body, handler);
+								   SmallVector<SkeletonStmt::SkeletonArg, 16> params, Stmt *Body) {
+	SkeletonStmt *builtStmt = new (Context) SkeletonStmt(Context, AtLoc, SkelLoc, skelName, blockName, params, Body);
 	return builtStmt;
 }
 

@@ -910,106 +910,38 @@ void IfStmt::setConditionVariable(const ASTContext &C, VarDecl *V) {
 SkeletonStmt::SkeletonStmt(const ASTContext &C,
 						   SourceLocation atLoc, SourceLocation skelLoc,
 						   IdentifierInfo *skelName, IdentifierInfo *blockName,
-						   ArrayRef<IdentifierInfo*> paramNames,
 						   ArrayRef<SkeletonArg> params,
-						   Stmt *Body, SkeletonHandler handler)
+						   Stmt *Body)
 : Stmt(SkeletonStmtClass), AtLoc(atLoc), SkelLoc(skelLoc), kind(skelName), name(blockName){
 	
-	assert((paramNames.size() == params.size()) && "param count mismatch");
-	
-	numParams = paramNames.size();
+	numParams = params.size();
 	if (numParams) {
-		ParamNames = new (C) IdentifierInfo*[numParams];
-		std::copy(paramNames.begin(), paramNames.end(), ParamNames);
+		this->Params = new (C) SkeletonArg[numParams];
+		std::copy(params.begin(), params.end(), this->Params);
 	} else {
-		ParamNames = nullptr;
+		Params = nullptr;
 	}
 	
-	this->Params = new (C) SkeletonArg[numParams];
-	
-	std::copy(params.begin(), params.end(), this->Params);
 	setBody(Body);
 	
-	setHandler(handler);
-	
 	
 }
-
-SkeletonArgType getArgTypesForSkeletonOfKind_Loop2dAccumulate(size_t argN){
-	switch (argN){
-		case 0:
-		case 1:
-		case 2:
-		case 3:
-		case 4:
-		case 5:
-			return ARG_IS_EXPR;
-		default:
-			return NO_SUCH_ARG;
-	}
-}
-
-const char * getArgNamesForSkeletonOfKind_Loop2dAccumulate(size_t argN){
-	switch (argN){
-		case 0:
-			return "i_init";
-		case 1:
-			return "i_delta";
-		case 2:
-			return "i_final";
-		case 3:
-			return "j_init";
-		case 4:
-			return "j_delta";
-		case 5:
-			return "j_final";
-		default:
-			return nullptr;
-	}
-}
-
-
-SkeletonHandler SkeletonStmt::GetHandlerForSkeleton(const IdentifierInfo &kind){
-	//*
-	 // Hard-code this as a test;
-	 llvm::sys::DynamicLibrary::AddSymbol("getArgTypesForSkeletonOfKind_Loop2dAccumulate", (void*)&getArgTypesForSkeletonOfKind_Loop2dAccumulate);
-	 llvm::sys::DynamicLibrary::AddSymbol("getArgNamesForSkeletonOfKind_Loop2dAccumulate", (void*)&getArgNamesForSkeletonOfKind_Loop2dAccumulate);
-	
-	 //*/
-	
-	SkeletonHandler ret;
-	
-	std::string symTypes("getArgTypesForSkeletonOfKind_");
-	std::string symNames("getArgNamesForSkeletonOfKind_");
-	StringRef skelKind = kind.getName();
-	symTypes += skelKind;
-	symNames += skelKind;
-	
-	ret.GetTypeOfNthArg = (SkeletonArgType (*)(size_t))(llvm::sys::DynamicLibrary::SearchForAddressOfSymbol(symTypes));
-	ret.GetNameOfNthArg = (const char * (*)(size_t))(llvm::sys::DynamicLibrary::SearchForAddressOfSymbol(symNames));
-	ret.isValid = (ret.GetTypeOfNthArg != nullptr && ret.GetNameOfNthArg != nullptr);
-	
-	return ret;
-}
-
 
 void SkeletonStmt::setParams(const ASTContext &C,
-							 IdentifierInfo **ParamNames, SkeletonArg *Params,
+							 SkeletonArg *Params,
                             size_t NumParams) {
-	assert(!((this->ParamNames == nullptr) ^ (this->Params == nullptr))
-		   && "names or subexprs initialized, but not both");
-	
 	if (this->Params){
 		C.Deallocate(this->Params);
-		C.Deallocate(this->ParamNames);
 	}
 	numParams = NumParams;
 	
-	this->ParamNames = new (C) IdentifierInfo*[numParams];
-	memcpy(this->ParamNames, ParamNames, sizeof(IdentifierInfo*) * numParams);
-	
-	this->Params = new (C) SkeletonArg[numParams];
-	memcpy(this->Params, Params, sizeof(SkeletonArg) * numParams);
+	if(numParams){
+		assert(Params != nullptr);
+		this->Params = new (C) SkeletonArg[numParams];
+		memcpy(this->Params, Params, sizeof(SkeletonArg) * numParams);
+	} else {
+		this->Params = nullptr;
+	}
 }
 
 ForStmt::ForStmt(const ASTContext &C, Stmt *Init, Expr *Cond, VarDecl *condVar,

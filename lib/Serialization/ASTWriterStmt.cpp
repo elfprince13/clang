@@ -168,7 +168,6 @@ void ASTStmtWriter::VisitSkeletonStmt(SkeletonStmt *S){
 	size_t n = S->getNumParams();
 	Record.push_back(n);
 	for(size_t i = 0; i < n; i++){
-		Writer.AddIdentifierRef(S->getParamNames()[i], Record);
 		SkeletonStmt::SkeletonArg Param = S->getParams()[i];
 		Record.push_back(Param.type);
 		switch (Param.type) {

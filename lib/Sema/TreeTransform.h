@@ -1203,9 +1203,8 @@ public:
 
 	StmtResult RebuildSkeletonStmt(SourceLocation AtLoc, SourceLocation SkelLoc,
 								   IdentifierInfo *skelName, IdentifierInfo *blockName,
-								   SmallVector<IdentifierInfo*, 16> paramNames, SmallVector<SkeletonStmt::SkeletonArg, 16> params,
-								   Stmt *Body, SkeletonHandler handler) {
-		return getSema().ActOnSkeletonStmt(AtLoc, SkelLoc, skelName, blockName, paramNames, params, Body, handler);
+								   SmallVector<SkeletonStmt::SkeletonArg, 16> params, Stmt *Body) {
+		return getSema().ActOnSkeletonStmt(AtLoc, SkelLoc, skelName, blockName, params, Body);
 	}
 
   /// \brief Build a new for statement.
@@ -6145,9 +6144,6 @@ TreeTransform<Derived>::TransformSkeletonStmt(SkeletonStmt *S){
 	bool SubStmtChanged = false;
 	
 	SmallVector<SkeletonStmt::SkeletonArg, 16> Params;
-	SmallVector<IdentifierInfo*, 16> ParamNames;
-	
-	for(size_t i = 0, n = S->getNumParams(); i < n; i++ ) ParamNames.push_back(S->getParamNames()[i]);
 	
 	for(size_t i = 0, n = S->getNumParams(); i < n; i++) {
 		SkeletonStmt::SkeletonArg B = (S->getParams())[i];
@@ -6198,7 +6194,7 @@ TreeTransform<Derived>::TransformSkeletonStmt(SkeletonStmt *S){
 		!SubStmtChanged)
 		return S;
 	
-	return getDerived().RebuildSkeletonStmt(S->getAtLoc(), S->getSkelLoc(), S->getKind(), S->getName(), ParamNames, Params, Body, S->getHandler() );
+	return getDerived().RebuildSkeletonStmt(S->getAtLoc(), S->getSkelLoc(), S->getKind(), S->getName(), Params, Body );
 }
 
 template<typename Derived>

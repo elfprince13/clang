@@ -21,7 +21,6 @@
 #include "clang/Frontend/MigratorOptions.h"
 #include "clang/Frontend/PreprocessorOutputOptions.h"
 #include "clang/Lex/HeaderSearchOptions.h"
-#include "clang/Lex/SkeletonSearchOptions.h"
 #include "clang/Lex/PreprocessorOptions.h"
 #include "clang/StaticAnalyzer/Core/AnalyzerOptions.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
@@ -66,8 +65,6 @@ public:
   /// Options controlling the \#include directive.
   IntrusiveRefCntPtr<HeaderSearchOptions> HeaderSearchOpts;
 	
-	IntrusiveRefCntPtr<SkeletonSearchOptions> SkeletonSearchOpts;
-
   /// Options controlling the preprocessor (aside from \#include handling).
   IntrusiveRefCntPtr<PreprocessorOptions> PreprocessorOpts;
 
@@ -85,11 +82,6 @@ public:
   }
 
   DiagnosticOptions &getDiagnosticOpts() const { return *DiagnosticOpts; }
-	
-	SkeletonSearchOptions &getSkeletonSearchOpts() { return *SkeletonSearchOpts; }
-	const SkeletonSearchOptions &getSkeletonSearchOpts() const {
-		return *SkeletonSearchOpts;
-	}
 
   HeaderSearchOptions &getHeaderSearchOpts() { return *HeaderSearchOpts; }
   const HeaderSearchOptions &getHeaderSearchOpts() const {
