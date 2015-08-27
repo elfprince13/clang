@@ -211,13 +211,15 @@ raw_ostream& DeclPrinter::Indent(unsigned Indentation) {
 void DeclPrinter::prettyPrintAttributes(Decl *D) {
   if (Policy.PolishForDeclaration)
     return;
-  
+	
   if (D->hasAttrs()) {
+	  Out << SExpCh(" (","");
     AttrVec &Attrs = D->getAttrs();
     for (AttrVec::const_iterator i=Attrs.begin(), e=Attrs.end(); i!=e; ++i) {
       Attr *A = *i;
       A->printPretty(Out, Policy);
     }
+	  Out << SExpR();
   }
 }
 
@@ -367,9 +369,8 @@ void DeclPrinter::VisitTypedefDecl(TypedefDecl *D) {
 		Out << SExpR() << " ";
 	}
 	D->getTypeSourceInfo()->getType().print(Out, Policy, D->getName());
-	Out << SExpCh(" (","");
 	prettyPrintAttributes(D);
-	Out << SExpR() << SExpR();
+	Out << SExpR();
 }
 
 void DeclPrinter::VisitTypeAliasDecl(TypeAliasDecl *D) {
