@@ -213,13 +213,13 @@ void DeclPrinter::prettyPrintAttributes(Decl *D) {
     return;
 	
   if (D->hasAttrs()) {
-	  Out << SExpCh(" (","");
+	  //Out << SExpCh(" (","");
     AttrVec &Attrs = D->getAttrs();
     for (AttrVec::const_iterator i=Attrs.begin(), e=Attrs.end(); i!=e; ++i) {
       Attr *A = *i;
       A->printPretty(Out, Policy);
     }
-	  Out << SExpR();
+	  //Out << SExpR();
   }
 }
 
