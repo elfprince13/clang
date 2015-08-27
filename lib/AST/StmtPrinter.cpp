@@ -140,7 +140,7 @@ void StmtPrinter::PrintRawDeclStmt(const DeclStmt *S) {
 }
 
 void StmtPrinter::VisitNullStmt(NullStmt *Node) {
-  Indent() << SExpL() << "" << SExpR() << SExpCh("","\n");
+	Indent() << SExpL() << "" << SExpR() << "\n";//SExpCh("","\n");
 }
 
 void StmtPrinter::VisitDeclStmt(DeclStmt *Node) {
@@ -302,7 +302,9 @@ void StmtPrinter::VisitSkeletonStmt(SkeletonStmt *Node) {
 				PrintExpr(I.data.expr);
 				break;
 			case ARG_IS_STMT:
-				PrintStmt(I.data.stmt);
+				OS << "\n";
+				PrintStmt(I.data.stmt, 3);
+				Indent(2);
 				break;
 			case ARG_IS_IDENT:
 				OS << "@ ";
@@ -319,7 +321,7 @@ void StmtPrinter::VisitSkeletonStmt(SkeletonStmt *Node) {
 		Indent(1) << ")\n";
 	}
 	PrintStmt(Node->getBody());
-	OS << SExpR() << "\n";
+	Indent() << SExpR() << "\n";
 }
 
 void StmtPrinter::VisitForStmt(ForStmt *Node) {
@@ -1398,8 +1400,7 @@ void StmtPrinter::VisitCallExpr(CallExpr *Call) {
   PrintExpr(Call->getCallee());
   OS << SExpCh(" ", "(");
   PrintCallArgs(Call);
-  OS << SExpCh("",")");
-	OS << SExpR();
+  OS << ")";
 }
 void StmtPrinter::VisitMemberExpr(MemberExpr *Node) {
   // FIXME: Suppress printing implicit bases (like "this")
@@ -1729,10 +1730,11 @@ void StmtPrinter::VisitCXXMemberCallExpr(CXXMemberCallExpr *Node) {
 }
 
 void StmtPrinter::VisitCUDAKernelCallExpr(CUDAKernelCallExpr *Node) {
+  OS <<SExpL() << SExpCh("<<<>>> ", "");
   PrintExpr(Node->getCallee());
-  OS << "<<<";
+  OS << SExpCh(" (", "<<<");
   PrintCallArgs(Node->getConfig());
-  OS << ">>>(";
+  OS << SExpCh(") ", ">>>(");
   PrintCallArgs(Node);
   OS << ")";
 }

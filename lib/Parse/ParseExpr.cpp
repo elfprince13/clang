@@ -129,7 +129,17 @@ ExprResult Parser::ParseExpression(TypeCastState isTypeCast) {
 ///
 ExprResult
 Parser::ParseExpressionWithLeadingAt(SourceLocation AtLoc) {
-  ExprResult LHS(ParseObjCAtExpression(AtLoc));
+	LangOptions lo = getLangOpts();
+	ExprResult ret = ExprError();
+	if (lo.ObjC1 || lo.ObjC2) {
+		ret = ParseObjCAtExpression(AtLoc);
+	} else /*if (lo.Skeletons) {
+		//ret = ParseSkeleton(AtLoc);
+	} else */{
+		Diag(Tok, diag::err_unexpected_at);
+	}
+	return ret;
+  ExprResult LHS(ret);
   return ParseRHSOfBinaryExpression(LHS, prec::Comma);
 }
 

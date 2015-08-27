@@ -30,8 +30,8 @@ int main(int argc, char **argv){
 	kernelTest<<<128,1024>>>(nullptr, 0, 1, 0);
 	if((argc % 4) == 0){
 		@Loop2dAccumulate(test_loop)[@ I][= 0][=argc][{argc--;}]{
-			argv[argc - 1]++;
-			// need to support skeleton use in expression position as well as statement position.
+			int itrVar; @I[=itrVar]; // This stupid idiom is to avoid the need for the type-awareness skeletons would need if used in expression position
+			argv[itrVar]++;
 		}
 	} else {
 		//printf("args not a multiple of 4: %d\n",argc);	
