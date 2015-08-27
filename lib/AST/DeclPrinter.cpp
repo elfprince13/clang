@@ -235,7 +235,7 @@ void DeclPrinter::printDeclType(QualType T, StringRef DeclName, bool Pack) {
 void DeclPrinter::ProcessDeclGroup(SmallVectorImpl<Decl*>& Decls) {
   this->Indent();
   Decl::printGroup(Decls.data(), Decls.size(), Out, Policy, Indentation);
-  Out << ";\n";
+  Out << SExpCh("", ";") << "\n";
   Decls.clear();
 
 }
@@ -336,9 +336,9 @@ void DeclPrinter::VisitDeclContext(DeclContext *DC, bool Indent) {
       DeclContext::decl_iterator Next = D;
       ++Next;
       if (Next != DEnd)
-        Terminator = ",";
+        Terminator = SExpCh(" ",",");
     } else
-      Terminator = ";";
+      Terminator = SExpCh("",";");
 
     if (Terminator)
       Out << Terminator;
@@ -357,14 +357,19 @@ void DeclPrinter::VisitTranslationUnitDecl(TranslationUnitDecl *D) {
 }
 
 void DeclPrinter::VisitTypedefDecl(TypedefDecl *D) {
-  if (!Policy.SuppressSpecifiers) {
-    Out << "typedef ";
-    
-    if (D->isModulePrivate())
-      Out << "__module_private__ ";
-  }
-  D->getTypeSourceInfo()->getType().print(Out, Policy, D->getName());
-  prettyPrintAttributes(D);
+	Out << SExpL();
+	Out << "typedef ";
+	if (!Policy.SuppressSpecifiers) {
+		Out << SExpL();
+		
+		if (D->isModulePrivate())
+			Out << "__module_private__";
+		Out << SExpR() << " ";
+	}
+	D->getTypeSourceInfo()->getType().print(Out, Policy, D->getName());
+	Out << SExpCh(" (","");
+	prettyPrintAttributes(D);
+	Out << SExpR() << SExpR();
 }
 
 void DeclPrinter::VisitTypeAliasDecl(TypeAliasDecl *D) {
@@ -397,8 +402,10 @@ void DeclPrinter::VisitEnumDecl(EnumDecl *D) {
 }
 
 void DeclPrinter::VisitRecordDecl(RecordDecl *D) {
+	Out << SExpL() << SExpL();
   if (!Policy.SuppressSpecifiers && D->isModulePrivate())
     Out << "__module_private__ ";
+	Out << SExpCh(") ", "");
   Out << D->getKindName();
 
   prettyPrintAttributes(D);
@@ -411,6 +418,7 @@ void DeclPrinter::VisitRecordDecl(RecordDecl *D) {
     VisitDeclContext(D);
     Indent() << "}";
   }
+	Out << SExpR();
 }
 
 void DeclPrinter::VisitEnumConstantDecl(EnumConstantDecl *D) {
@@ -661,11 +669,13 @@ void DeclPrinter::VisitFriendDecl(FriendDecl *D) {
 }
 
 void DeclPrinter::VisitFieldDecl(FieldDecl *D) {
+	Out << SExpL() << SExpL();
   if (!Policy.SuppressSpecifiers && D->isMutable())
     Out << "mutable ";
   if (!Policy.SuppressSpecifiers && D->isModulePrivate())
     Out << "__module_private__ ";
-
+	Out << SExpCh(") ", "");
+	
   Out << D->getASTContext().getUnqualifiedObjCPointerType(D->getType()).
             stream(Policy, D->getName());
 
@@ -683,6 +693,7 @@ void DeclPrinter::VisitFieldDecl(FieldDecl *D) {
     Init->printPretty(Out, nullptr, Policy, Indentation);
   }
   prettyPrintAttributes(D);
+	Out << SExpR();
 }
 
 void DeclPrinter::VisitLabelDecl(LabelDecl *D) {
@@ -801,8 +812,10 @@ void DeclPrinter::VisitEmptyDecl(EmptyDecl *D) {
 }
 
 void DeclPrinter::VisitCXXRecordDecl(CXXRecordDecl *D) {
+	Out << SExpL() << SExpL();
   if (!Policy.SuppressSpecifiers && D->isModulePrivate())
     Out << "__module_private__ ";
+	Out << SExpCh(") ", "");
   Out << D->getKindName();
 
   prettyPrintAttributes(D);
@@ -840,25 +853,28 @@ void DeclPrinter::VisitCXXRecordDecl(CXXRecordDecl *D) {
     VisitDeclContext(D);
     Indent() << "}";
   }
+	
+	Out << SExpR();
 }
 
 void DeclPrinter::VisitLinkageSpecDecl(LinkageSpecDecl *D) {
-  const char *l;
-  if (D->getLanguage() == LinkageSpecDecl::lang_c)
-    l = "C";
-  else {
-    assert(D->getLanguage() == LinkageSpecDecl::lang_cxx &&
-           "unknown language in linkage specification");
-    l = "C++";
-  }
-
-  Out << "extern \"" << l << "\" ";
-  if (D->hasBraces()) {
-    Out << "{\n";
-    VisitDeclContext(D);
-    Indent() << "}";
-  } else
-    Visit(*D->decls_begin());
+	const char *l;
+	if (D->getLanguage() == LinkageSpecDecl::lang_c)
+		l = "C";
+	else {
+		assert(D->getLanguage() == LinkageSpecDecl::lang_cxx &&
+			   "unknown language in linkage specification");
+		l = "C++";
+	}
+	
+	Out << SExpL() << "extern \"" << l << "\" ";
+	if (D->hasBraces()) {
+		Out << "{\n";
+		VisitDeclContext(D);
+		Indent() << "}";
+	} else
+		Visit(*D->decls_begin());
+	Out << SExpR();
 }
 
 void DeclPrinter::PrintTemplateParameters(const TemplateParameterList *Params,

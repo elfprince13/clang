@@ -87,6 +87,13 @@ namespace {
   public:
     explicit TypePrinter(const PrintingPolicy &Policy)
       : Policy(Policy), HasEmptyPlaceHolder(false), InsideCCAttribute(false) { }
+	  
+	  inline bool SExp() { return Policy.UseSExp; }
+	  inline const char * SExpCh(const char * Parens, const char * NoParens){
+		  return SExp() ? Parens : NoParens;
+	  }
+	  inline const char * SExpL(const char * alt = ""){ return SExpCh("(",alt); }
+	  inline const char * SExpR(const char * alt = ""){ return SExpCh(")",alt); }
 
     void print(const Type *ty, Qualifiers qs, raw_ostream &OS,
                StringRef PlaceHolder);
@@ -332,6 +339,7 @@ void TypePrinter::printPointerBefore(const PointerType *T, raw_ostream &OS) {
   if (isa<ArrayType>(T->getPointeeType()))
     OS << '(';
   OS << '*';
+	OS << SExpCh(" ", "");
 }
 void TypePrinter::printPointerAfter(const PointerType *T, raw_ostream &OS) {
   IncludeStrongLifetimeRAII Strong(Policy);
@@ -347,7 +355,8 @@ void TypePrinter::printBlockPointerBefore(const BlockPointerType *T,
                                           raw_ostream &OS) {
   SaveAndRestore<bool> NonEmptyPH(HasEmptyPlaceHolder, false);
   printBefore(T->getPointeeType(), OS);
-  OS << '^';
+	OS << '^';
+	OS << SExpCh(" ", "");
 }
 void TypePrinter::printBlockPointerAfter(const BlockPointerType *T,
                                           raw_ostream &OS) {
@@ -364,7 +373,8 @@ void TypePrinter::printLValueReferenceBefore(const LValueReferenceType *T,
   // FIXME: this should include vectors, but vectors use attributes I guess.
   if (isa<ArrayType>(T->getPointeeTypeAsWritten()))
     OS << '(';
-  OS << '&';
+	OS << '&';
+	OS << SExpCh(" ", "");
 }
 void TypePrinter::printLValueReferenceAfter(const LValueReferenceType *T,
                                             raw_ostream &OS) {
@@ -386,7 +396,8 @@ void TypePrinter::printRValueReferenceBefore(const RValueReferenceType *T,
   // FIXME: this should include vectors, but vectors use attributes I guess.
   if (isa<ArrayType>(T->getPointeeTypeAsWritten()))
     OS << '(';
-  OS << "&&";
+	OS << "&&";
+	OS << SExpCh(" ", "");
 }
 void TypePrinter::printRValueReferenceAfter(const RValueReferenceType *T,
                                             raw_ostream &OS) {
@@ -434,6 +445,8 @@ void TypePrinter::printConstantArrayBefore(const ConstantArrayType *T,
 }
 void TypePrinter::printConstantArrayAfter(const ConstantArrayType *T, 
                                           raw_ostream &OS) {
+	
+	OS << SExpCh(" ", "");
   OS << '[';
   if (T->getIndexTypeQualifiers().hasQualifiers()) {
     AppendTypeQualList(OS, T->getIndexTypeCVRQualifiers(), Policy.LangOpts.C99);
@@ -455,6 +468,8 @@ void TypePrinter::printIncompleteArrayBefore(const IncompleteArrayType *T,
 }
 void TypePrinter::printIncompleteArrayAfter(const IncompleteArrayType *T, 
                                             raw_ostream &OS) {
+	
+	OS << SExpCh(" ", "");
   OS << "[]";
   printAfter(T->getElementType(), OS);
 }
