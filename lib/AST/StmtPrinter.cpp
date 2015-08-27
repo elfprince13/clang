@@ -1404,27 +1404,45 @@ void StmtPrinter::VisitCallExpr(CallExpr *Call) {
 }
 void StmtPrinter::VisitMemberExpr(MemberExpr *Node) {
   // FIXME: Suppress printing implicit bases (like "this")
-  PrintExpr(Node->getBase());
+	OS << SExpL();
 
-  MemberExpr *ParentMember = dyn_cast<MemberExpr>(Node->getBase());
-  FieldDecl  *ParentDecl   = ParentMember
-    ? dyn_cast<FieldDecl>(ParentMember->getMemberDecl()) : nullptr;
+	
+	MemberExpr *ParentMember = dyn_cast<MemberExpr>(Node->getBase());
+	FieldDecl  *ParentDecl   = ParentMember
+	? dyn_cast<FieldDecl>(ParentMember->getMemberDecl()) : nullptr;
+	
 
-  if (!ParentDecl || !ParentDecl->isAnonymousStructOrUnion())
-    OS << (Node->isArrow() ? "->" : ".");
+	if (Policy.UseSExp &&
+		(!ParentDecl || !ParentDecl->isAnonymousStructOrUnion())){
+		OS << (Node->isArrow() ? "->" : ".") << " ";
+	}
+	
+	PrintExpr(Node->getBase());
+	OS << SExpCh(" ", "");
+	
+	if (!Policy.UseSExp && (!ParentDecl || !ParentDecl->isAnonymousStructOrUnion())){
+		OS << (Node->isArrow() ? "->" : ".");
+	}
 
-  if (FieldDecl *FD = dyn_cast<FieldDecl>(Node->getMemberDecl()))
-    if (FD->isAnonymousStructOrUnion())
-      return;
+	if (FieldDecl *FD = dyn_cast<FieldDecl>(Node->getMemberDecl())) {
+	  if (FD->isAnonymousStructOrUnion()) {
+		  OS << SExpR();
+		  return;
+	  }
+	}
 
   if (NestedNameSpecifier *Qualifier = Node->getQualifier())
     Qualifier->print(OS, Policy);
   if (Node->hasTemplateKeyword())
-    OS << "template ";
+    OS << SExpL() << "template ";
   OS << Node->getMemberNameInfo();
   if (Node->hasExplicitTemplateArgs())
     TemplateSpecializationType::PrintTemplateArgumentList(
         OS, Node->getTemplateArgs(), Node->getNumTemplateArgs(), Policy);
+	if (Node->hasTemplateKeyword())
+		OS << SExpR();
+	
+	OS << SExpR();
 }
 void StmtPrinter::VisitObjCIsaExpr(ObjCIsaExpr *Node) {
   PrintExpr(Node->getBase());
@@ -1437,10 +1455,12 @@ void StmtPrinter::VisitExtVectorElementExpr(ExtVectorElementExpr *Node) {
   OS << Node->getAccessor().getName();
 }
 void StmtPrinter::VisitCStyleCastExpr(CStyleCastExpr *Node) {
+	OS << SExpCh("(c-cast ","");
   OS << '(';
   Node->getTypeAsWritten().print(OS, Policy);
-  OS << ')';
+  OS << ')' << SExpCh(" ", "");
   PrintExpr(Node->getSubExpr());
+	OS << SExpR();
 }
 void StmtPrinter::VisitCompoundLiteralExpr(CompoundLiteralExpr *Node) {
   OS << '(';
