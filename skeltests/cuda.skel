@@ -1,5 +1,5 @@
 /* Minimal declaration for printf */
-extern int printf(const char *i, ...);
+//extern int printf(const char *i, ...); // Don't know variadic stuff yet
 
 /* Minimal declarations for CUDA support.  Testing purposes only. */
 
@@ -25,19 +25,19 @@ int cudaConfigureCall(dim3 gridSize, dim3 blockSize, size_t sharedSize = 0,
 
 ///////////////////////
 
-__global__ void kernelTest(float * data, int start, int step, int end){
+__global__ void kernelTest(float* data, int start, int step, int end){
 	
 }
 
-int dummy(const char * fmt, int c){
+int dummy(const char* fmt, int c){
 	return 0;
 }
 
-int main(int argc, char **argv){
+int main(int argc, char** argv){
 	kernelTest<<<128,1024>>>(nullptr, 0, 1, 0);
 	if((argc % 4) == 0){
 		@Loop2dAccumulate(test_loop)[@ I][= 0][=argc][{argc--;}]{
-			int itrVar; @I[=itrVar]; // This stupid idiom is to avoid the need for the type-awareness skeletons would need if used in expression position
+			int itrVar; @I[=itrVar]; // This stupid idiom is to avoid the type-awareness skeletons would need if used in expression position
 			argv[itrVar]++;
 		}
 	} else {
