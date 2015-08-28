@@ -123,7 +123,7 @@ namespace  {
 /// PrintRawCompoundStmt - Print a compound stmt without indenting the {, and
 /// with no newline after the }.
 void StmtPrinter::PrintRawCompoundStmt(CompoundStmt *Node) {
-  OS << SExpL() << SExpCh("begin","{") << "\n";
+  OS << SExpL() << SExpCh("block","{") << "\n";
   for (auto *I : Node->body())
     PrintStmt(I);
 
