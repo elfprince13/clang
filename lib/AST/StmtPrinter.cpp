@@ -1152,58 +1152,70 @@ void StmtPrinter::VisitPredefinedExpr(PredefinedExpr *Node) {
 }
 
 void StmtPrinter::VisitCharacterLiteral(CharacterLiteral *Node) {
-  unsigned value = Node->getValue();
-
-  switch (Node->getKind()) {
-  case CharacterLiteral::Ascii: break; // no prefix.
-  case CharacterLiteral::Wide:  OS << 'L'; break;
-  case CharacterLiteral::UTF16: OS << 'u'; break;
-  case CharacterLiteral::UTF32: OS << 'U'; break;
-  }
-
-  switch (value) {
-  case '\\':
-    OS << "'\\\\'";
-    break;
-  case '\'':
-    OS << "'\\''";
-    break;
-  case '\a':
-    // TODO: K&R: the meaning of '\\a' is different in traditional C
-    OS << "'\\a'";
-    break;
-  case '\b':
-    OS << "'\\b'";
-    break;
-  // Nonstandard escape sequence.
-  /*case '\e':
-    OS << "'\\e'";
-    break;*/
-  case '\f':
-    OS << "'\\f'";
-    break;
-  case '\n':
-    OS << "'\\n'";
-    break;
-  case '\r':
-    OS << "'\\r'";
-    break;
-  case '\t':
-    OS << "'\\t'";
-    break;
-  case '\v':
-    OS << "'\\v'";
-    break;
-  default:
-    if (value < 256 && isPrintable((unsigned char)value))
-      OS << "'" << (char)value << "'";
-    else if (value < 256)
-      OS << "'\\x" << llvm::format("%02x", value) << "'";
-    else if (value <= 0xFFFF)
-      OS << "'\\u" << llvm::format("%04x", value) << "'";
-    else
-      OS << "'\\U" << llvm::format("%08x", value) << "'";
-  }
+	unsigned value = Node->getValue();
+	
+	if(Policy.UseSExp){
+		OS << "#\\u";
+		if (value < 256 && isPrintable((unsigned char)value))
+			OS << (char)value;
+		else if (value < 256)
+			OS << llvm::format("%02x", value);
+		else if (value <= 0xFFFF)
+			OS << llvm::format("%04x", value);
+		else
+			OS << llvm::format("%08x", value);
+	} else {
+		switch (Node->getKind()) {
+			case CharacterLiteral::Ascii: break; // no prefix.
+			case CharacterLiteral::Wide:  OS << 'L'; break;
+			case CharacterLiteral::UTF16: OS << 'u'; break;
+			case CharacterLiteral::UTF32: OS << 'U'; break;
+		}
+		
+	  switch (value) {
+		  case '\\':
+		OS << "'\\\\'";
+		break;
+		  case '\'':
+		OS << "'\\''";
+		break;
+		  case '\a':
+		// TODO: K&R: the meaning of '\\a' is different in traditional C
+		OS << "'\\a'";
+		break;
+		  case '\b':
+		OS << "'\\b'";
+		break;
+			  // Nonstandard escape sequence.
+			  /*case '\e':
+			   OS << "'\\e'";
+			   break;*/
+		  case '\f':
+		OS << "'\\f'";
+		break;
+		  case '\n':
+		OS << "'\\n'";
+		break;
+		  case '\r':
+		OS << "'\\r'";
+		break;
+		  case '\t':
+		OS << "'\\t'";
+		break;
+		  case '\v':
+		OS << "'\\v'";
+		break;
+		  default:
+		if (value < 256 && isPrintable((unsigned char)value))
+			OS << "'" << (char)value << "'";
+		else if (value < 256)
+			OS << "'\\x" << llvm::format("%02x", value) << "'";
+		else if (value <= 0xFFFF)
+			OS << "'\\u" << llvm::format("%04x", value) << "'";
+		else
+			OS << "'\\U" << llvm::format("%08x", value) << "'";
+	  }
+	}
 }
 
 void StmtPrinter::VisitIntegerLiteral(IntegerLiteral *Node) {

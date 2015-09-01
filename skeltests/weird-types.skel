@@ -1,0 +1,34 @@
+typedef int (**MainType)();
+
+struct t {
+	int a, b ,c;
+	int d;
+};
+
+int main();
+
+int(** test())(){
+	int (*mt)() = &main,  (*b)() = &main, c = 1, (d)[4] = {1,2,3,4}, (e) = 6;
+	auto ret = (&main);
+	return &ret;
+}
+
+class A
+{
+	public:
+		  A(int (*f)(int)) : m_f(f) {}
+		    int (*get_f() const)(int) { return m_f; }
+		int get_0() const { return 0; }
+	private:
+		      int (*m_f)(int);
+};
+
+char b[2];
+char (*c)[2];
+const char d = '5';
+char * const e = b;
+int z ='\u00a';
+int main(){
+ int a=0, b=a;
+ return b;
+}

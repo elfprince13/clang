@@ -151,15 +151,20 @@ void TypePrinter::print(QualType t, raw_ostream &OS, StringRef PlaceHolder) {
 void TypePrinter::print(const Type *T, Qualifiers Quals, raw_ostream &OS,
                         StringRef PlaceHolder) {
   if (!T) {
-    OS << "NULL TYPE";
+    OS << SExpL() << "NULL TYPE" << SExpR();
     return;
   }
 
   SaveAndRestore<bool> PHVal(HasEmptyPlaceHolder, PlaceHolder.empty());
+	OS << SExpL();
 
   printBefore(T, Quals, OS);
-  OS << PlaceHolder;
+	if(!Policy.UseSExp) OS << PlaceHolder;
+	else OS << "(!)"; // This is definitely not a valid part of a C++ type, so we're safe
   printAfter(T, Quals, OS);
+	OS << SExpCh(") ","");
+	if(Policy.UseSExp) OS << PlaceHolder;
+
 }
 
 bool TypePrinter::canPrefixQualifiers(const Type *T,
