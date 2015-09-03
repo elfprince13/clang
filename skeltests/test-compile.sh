@@ -8,11 +8,17 @@ then
 	echo "Clang succesfully parsed the file into S-Expression format"
 	echo -e "\n)" >> tmp/$1-tmp.rkt
 
-	racket tmp/$1-tmp.rkt > tmp/$1-tmp.cu
+	racket tmp/$1-tmp.rkt > tmp/$1-tmp.c
 	if [ $? -eq 0 ]
 	then
 		echo "Racket succesfully performed skeleton expansion."
-		"/Users/thomas/Documents/Brown/Proteins/llvm/build/Debug/bin/clang" tmp/$1-tmp.cu
+		"/Users/thomas/Documents/Brown/Proteins/llvm/build/Debug/bin/clang" tmp/$1-tmp.c -o $1
+		if [ $? -eq 0 ]
+		then
+			echo "Final compilation to $1 succeeded."
+		else
+			echo "Final compilation to $1 failed." >&2
+		fi
 	else
 		echo "Racket failed to perform skeleton expansion.">&2
 	fi

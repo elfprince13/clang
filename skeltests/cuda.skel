@@ -1,6 +1,6 @@
-#include <stdio.h>
+//#include <stdio.h>
 /* Minimal declaration for printf */
-//extern int printf(const char *i, ...); // Don't know variadic stuff yet
+extern int printf(const char *i, ...) __attribute__((format(printf, 1 ,2))); // Don't know variadic stuff yet
 
 /* Minimal declarations for CUDA support.  Testing purposes only. */
 
@@ -37,11 +37,7 @@ int dummy(const char* fmt, int c){
 int main(int argc, char** argv){
 	kernelTest<<<128,1024>>>(nullptr, 0, 1, 0);
 	if((argc % 4) == 0){
-		@Loop2dAccumulate(test_loop)[@ I][= 0][=argc][{argc--;}]{
-			int itrVar; @I[=itrVar]; // This stupid idiom is to avoid the type-awareness skeletons would need if used in expression position
-			argv[itrVar]++;
-		}
 	} else {
-		/*printf*/dummy("args not a multiple of 4: %d\n",argc);	
+		printf/*dummy*/("args not a multiple of 4: %d\n",argc);	
 	}
 }

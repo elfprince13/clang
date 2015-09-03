@@ -1,14 +1,21 @@
+extern void* malloc(unsigned long size);
+extern void free(void* data);
+
+
 int main(){
 	int argc = 100;
-	char data[argc];
+	char *data=(char*)malloc(argc);
+	int ret;
 	if((argc % 4) == 0){
-		@Loop2dAccumulate(test_loop)[@I][@J][=0][=argc][=0][=100]{
-			int i; @I[=i];
-			data[i]++;
+		@Loop1d(test_loop)[@I][=0][=argc]{
+			int i; @I(test_iterator)[=i];
+			(*(data+i))++;
 		}
-		return 0;
+		ret =  0;
 	} else {
 		// args not a multiple of 4
-		return	argc % 4;
+		ret =	argc % 4;
 	}
+	free(data);
+	return ret;
 }
