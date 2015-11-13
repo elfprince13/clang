@@ -78,6 +78,8 @@ StmtResult Parser::ParseSkeleton(SourceLocation AtLoc){
 					if(er.isUsable()) {
 						FullExprArg FullExp(Actions.MakeFullExpr(er.get(), SkelLoc));
 						
+						// We really need to test if this is evaluatable, and if so, do constant folding ourselves.
+						
 						argHere.data.expr = FullExp.get();
 						argHere.type = ARG_IS_EXPR;
 					} else {

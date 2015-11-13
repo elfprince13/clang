@@ -134,6 +134,7 @@ Parser::ParseExpressionWithLeadingAt(SourceLocation AtLoc) {
 	if (lo.ObjC1 || lo.ObjC2) {
 		ret = ParseObjCAtExpression(AtLoc);
 	} else /*if (lo.Skeletons) {
+			// n.b.: We might be able to make this thing work with UnknownAny type
 		//ret = ParseSkeleton(AtLoc);
 	} else */{
 		Diag(Tok, diag::err_unexpected_at);
