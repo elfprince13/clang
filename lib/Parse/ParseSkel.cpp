@@ -20,7 +20,9 @@ using namespace clang;
 
 
 Parser::DeclGroupPtrTy Parser::ParseTopLevelSkeleton() {
-	return DeclGroupPtrTy();
+	SourceLocation AtLoc = ConsumeToken();
+	StmtResult skelStmt = ParseSkeleton(AtLoc);
+	return DeclGroupPtrTy(); // ConvertDeclToDeclGroup
 }
 
 

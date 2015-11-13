@@ -1,21 +1,39 @@
 extern void *malloc(unsigned long size);
 extern void free(void *data);
+extern int puts(const char *str);
+extern unsigned long strlen(const char *str);
 
-int main() {
-  int argc = 100;
-  char *data = (char *)malloc(argc);
+template<int c> void unroll(char a) {
+	const char o = a, nl ='\n';
+	puts(&o); a++; puts(&nl);
+	unroll<c - 1>(a);
+}
+
+template<> void unroll<0>(char a) {
+	return;
+}
+
+@TLD(top_level_def);
+
+
+int main(int argc, char **argv) {
   int ret;
   if ((argc % 4) == 0) {
     @Loop1d(test_loop)[@I][= 0][= argc] {
       int i;
       @I(test_iterator)[= i];
-      (*(data + i))++;
+      if (strlen(*(argv + i)) > 0)
+        (*(argv + i))++;
+      puts(*(argv + i));
     }
+    const char nl =
+        '\n'; // oops need to figure out how to escape strings properly (and also not hang the expander)
+    puts(&nl);
     ret = 0;
   } else {
     // args not a multiple of 4
     ret = argc % 4;
   }
-  free(data);
+  unroll<2>('h');
   return ret;
 }
