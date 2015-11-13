@@ -1279,8 +1279,8 @@ void StmtPrinter::VisitParenExpr(ParenExpr *Node) {
 }
 void StmtPrinter::VisitUnaryOperator(UnaryOperator *Node) {
 	OS << SExpL();
-  if (!Node->isPostfix()) {
-    OS << UnaryOperator::getOpcodeStr(Node->getOpcode());
+  if (!Node->isPostfix() || SExp()) {
+    OS << UnaryOperator::getOpcodeStr(Node->getOpcode(), SExp());
 
     // Print a space if this is an "identifier operator" like __real, or if
     // it might be concatenated incorrectly like '+'.
@@ -1301,7 +1301,7 @@ void StmtPrinter::VisitUnaryOperator(UnaryOperator *Node) {
     }
   }
   PrintExpr(Node->getSubExpr());
-	if (Node->isPostfix()){
+	if (Node->isPostfix() && !SExp()){
 		OS << SExpCh(" ", "");
 		OS << UnaryOperator::getOpcodeStr(Node->getOpcode());
 	}

@@ -1064,12 +1064,12 @@ getLocationOfByte(unsigned ByteNo, const SourceManager &SM,
 
 /// getOpcodeStr - Turn an Opcode enum value into the punctuation char it
 /// corresponds to, e.g. "sizeof" or "[pre]++".
-StringRef UnaryOperator::getOpcodeStr(Opcode Op) {
+StringRef UnaryOperator::getOpcodeStr(Opcode Op, bool sexp) {
   switch (Op) {
-  case UO_PostInc: return "++";
-  case UO_PostDec: return "--";
-  case UO_PreInc:  return "++";
-  case UO_PreDec:  return "--";
+	  case UO_PostInc: return sexp ? ">++" : "++";
+	  case UO_PostDec: return sexp ? ">--" : "--";
+	  case UO_PreInc:  return sexp ? "++<" : "++";
+  case UO_PreDec:  return sexp ? "--<" : "--";
   case UO_AddrOf:  return "&";
   case UO_Deref:   return "*";
   case UO_Plus:    return "+";

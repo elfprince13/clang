@@ -1763,7 +1763,7 @@ public:
 
   /// getOpcodeStr - Turn an Opcode enum value into the punctuation char it
   /// corresponds to, e.g. "sizeof" or "[pre]++"
-  static StringRef getOpcodeStr(Opcode Op);
+  static StringRef getOpcodeStr(Opcode Op, bool sexp = false);
 
   /// \brief Retrieve the unary opcode that corresponds to the given
   /// overloaded operator.
