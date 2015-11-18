@@ -718,7 +718,7 @@ Parser::ParseExternalDeclaration(ParsedAttributesWithRange &attrs,
 		  if (lo.ObjC1 || lo.ObjC2) {
 			  ret = ParseObjCAtDirectives();
 		  } else if (lo.Skeletons) {
-			  ret = ParseTopLevelSkeleton();
+			  ret = ParseTopLevelSkeleton(DS);
 		  } else {
 			  Diag(Tok, diag::err_unexpected_at);
 		  }

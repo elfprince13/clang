@@ -1248,7 +1248,7 @@ private:
 	
 	//===--------------------------------------------------------------------===//
 	// Skeletons: External Definitions.
-	DeclGroupPtrTy ParseTopLevelSkeleton();
+	DeclGroupPtrTy ParseTopLevelSkeleton(ParsingDeclSpec *DS);
 	StmtResult ParseSkeleton(SourceLocation AtLoc);
 
   // Objective-C External Declarations

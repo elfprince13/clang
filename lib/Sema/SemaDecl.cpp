@@ -3504,6 +3504,13 @@ void Sema::MergeVarDecl(VarDecl *New, LookupResult &Previous) {
     NewTemplate->setAccess(New->getAccess());
 }
 
+
+Decl *Sema::ActOnExternalSkeleton(Scope *S, DeclSpec &DS, SkeletonStmt * Body){
+	ExposedSkeletonDecl * Decl = nullptr;
+	Decl->setBody(Body);
+	return Decl;
+}
+
 /// ParsedFreeStandingDeclSpec - This method is invoked when a declspec with
 /// no declarator (e.g. "struct foo;") is parsed.
 Decl *Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS,

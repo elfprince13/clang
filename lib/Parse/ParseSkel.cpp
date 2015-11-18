@@ -19,10 +19,19 @@
 using namespace clang;
 
 
-Parser::DeclGroupPtrTy Parser::ParseTopLevelSkeleton() {
+Parser::DeclGroupPtrTy Parser::ParseTopLevelSkeleton(ParsingDeclSpec *DS) {
 	SourceLocation AtLoc = ConsumeToken();
 	StmtResult skelStmt = ParseSkeleton(AtLoc);
-	return DeclGroupPtrTy(); // ConvertDeclToDeclGroup
+	
+	DeclGroupPtrTy ret = DeclGroupPtrTy();
+	if(false/*skelStmt.isUsable()*/){
+		
+		
+		
+		Decl * skelDecl = Actions.ActOnExternalSkeleton(getCurScope(), *DS, (SkeletonStmt*)(skelStmt.get()));
+		ret = Actions.ConvertDeclToDeclGroup(skelDecl);
+	}
+	return ret; // ConvertDeclToDeclGroup
 }
 
 

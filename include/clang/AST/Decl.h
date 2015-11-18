@@ -42,6 +42,7 @@ class Module;
 class NestedNameSpecifier;
 class ParmVarDecl;
 class Stmt;
+class SkeletonStmt;
 class StringLiteral;
 class TemplateArgumentList;
 class TemplateParameterList;
@@ -1525,15 +1526,24 @@ private:
 // Generate Function or Method Decl's around a skeleton.
 class ExposedSkeletonDecl : public DeclaratorDecl, public DeclContext {
 	
+private:
+	SkeletonStmt * Body;
+	
 protected:
-	ExposedSkeletonDecl(Kind DK, ASTContext &C, DeclContext *DC, SourceLocation StartLoc,
+	ExposedSkeletonDecl(ASTContext &C, DeclContext *DC, SourceLocation StartLoc,
 				 const DeclarationNameInfo &NameInfo,
 				 QualType T, TypeSourceInfo *TInfo)
-    : DeclaratorDecl(DK, DC, NameInfo.getLoc(), NameInfo.getName(), T, TInfo,
+    : DeclaratorDecl(ExposedSkeleton, DC, NameInfo.getLoc(), NameInfo.getName(), T, TInfo,
                      StartLoc),
-	DeclContext(DK) {};
+	DeclContext(ExposedSkeleton), Body(nullptr) {};
 
 public:
+	
+	void setBody(SkeletonStmt * B) { Body = B; }
+	virtual Stmt *getBody() const {
+		return (Stmt*)Body;
+	}
+	
 	// Implement isa/cast/dyncast/etc.
 	static bool classof(const Decl *D) { return classofKind(D->getKind()); }
 	static bool classofKind(Kind K) {
