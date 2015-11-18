@@ -1170,15 +1170,19 @@ void StmtPrinter::VisitCharacterLiteral(CharacterLiteral *Node) {
 	unsigned value = Node->getValue();
 	
 	if(Policy.UseSExp){
-		OS << "#\\u";
+		OS << "#\\";
 		if (value < 256 && isPrintable((unsigned char)value))
 			OS << (char)value;
-		else if (value < 256)
-			OS << llvm::format("%02x", value);
-		else if (value <= 0xFFFF)
-			OS << llvm::format("%04x", value);
-		else
-			OS << llvm::format("%08x", value);
+		else{
+			OS << ((value <= 0xFFFF) ? "u" : "U");
+			if (value < 256)
+				OS << llvm::format("%02x", value);
+			else if (value <= 0xFFFF)
+				OS << llvm::format("%04x", value);
+			else
+				OS << llvm::format("%08x", value);
+
+		}
 	} else {
 		switch (Node->getKind()) {
 			case CharacterLiteral::Ascii: break; // no prefix.
