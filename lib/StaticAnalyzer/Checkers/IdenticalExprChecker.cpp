@@ -96,7 +96,7 @@ void FindIdenticalExprVisitor::checkBitwiseOrLogicalOp(const BinaryOperator *B,
     }
     LHS = B2->getLHS();
   }
-  
+
   if (isIdenticalStmt(AC->getASTContext(), RHS, LHS)) {
     Sr[0] = RHS->getSourceRange();
     Sr[1] = LHS->getSourceRange();
@@ -350,6 +350,7 @@ static bool isIdenticalStmt(const ASTContext &Ctx, const Stmt *Stmt1,
     return false;
   case Stmt::CallExprClass:
   case Stmt::ArraySubscriptExprClass:
+  case Stmt::OMPArraySectionExprClass:
   case Stmt::ImplicitCastExprClass:
   case Stmt::ParenExprClass:
   case Stmt::BreakStmtClass:

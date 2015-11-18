@@ -39,6 +39,7 @@
 #include "clang/Basic/LLVM.h"
 #include "clang/Basic/SourceLocation.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/IntrusiveRefCntPtr.h"
@@ -388,15 +389,16 @@ namespace SrcMgr {
   /// SourceManager keeps an array of these objects, and they are uniquely
   /// identified by the FileID datatype.
   class SLocEntry {
-    unsigned Offset;   // low bit is set for expansion info.
+    unsigned Offset : 31;
+    unsigned IsExpansion : 1;
     union {
       FileInfo File;
       ExpansionInfo Expansion;
     };
   public:
-    unsigned getOffset() const { return Offset >> 1; }
+    unsigned getOffset() const { return Offset; }
 
-    bool isExpansion() const { return Offset & 1; }
+    bool isExpansion() const { return IsExpansion; }
     bool isFile() const { return !isExpansion(); }
 
     const FileInfo &getFile() const {
@@ -410,15 +412,19 @@ namespace SrcMgr {
     }
 
     static SLocEntry get(unsigned Offset, const FileInfo &FI) {
+      assert(!(Offset & (1 << 31)) && "Offset is too large");
       SLocEntry E;
-      E.Offset = Offset << 1;
+      E.Offset = Offset;
+      E.IsExpansion = false;
       E.File = FI;
       return E;
     }
 
     static SLocEntry get(unsigned Offset, const ExpansionInfo &Expansion) {
+      assert(!(Offset & (1 << 31)) && "Offset is too large");
       SLocEntry E;
-      E.Offset = (Offset << 1) | 1;
+      E.Offset = Offset;
+      E.IsExpansion = true;
       E.Expansion = Expansion;
       return E;
     }
@@ -615,7 +621,7 @@ class SourceManager : public RefCountedBase<SourceManager> {
   /// have already been loaded from the external source.
   ///
   /// Same indexing as LoadedSLocEntryTable.
-  std::vector<bool> SLocEntryLoaded;
+  llvm::BitVector SLocEntryLoaded;
 
   /// \brief An external source for source location entries.
   ExternalSLocEntrySource *ExternalSLocEntries;
@@ -1146,10 +1152,14 @@ public:
   /// \brief Tests whether the given source location represents a macro
   /// argument's expansion into the function-like macro definition.
   ///
+  /// \param StartLoc If non-null and function returns true, it is set to the
+  /// start location of the macro argument expansion.
+  ///
   /// Such source locations only appear inside of the expansion
   /// locations representing where a particular function-like macro was
   /// expanded.
-  bool isMacroArgExpansion(SourceLocation Loc) const;
+  bool isMacroArgExpansion(SourceLocation Loc,
+                           SourceLocation *StartLoc = nullptr) const;
 
   /// \brief Tests whether the given source location represents the expansion of
   /// a macro body.

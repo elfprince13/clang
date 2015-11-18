@@ -11,6 +11,7 @@
 #define LLVM_CLANG_FRONTEND_FRONTENDOPTIONS_H
 
 #include "clang/Frontend/CommandLineSourceLoc.h"
+#include "clang/Serialization/ModuleFileExtension.h"
 #include "clang/Sema/CodeCompleteOptions.h"
 #include "llvm/ADT/StringRef.h"
 #include <string>
@@ -93,7 +94,7 @@ class FrontendInputFile {
   bool IsSystem;
 
 public:
-  FrontendInputFile() : Buffer(nullptr), Kind(IK_None) { }
+  FrontendInputFile() : Buffer(nullptr), Kind(IK_None), IsSystem(false) { }
   FrontendInputFile(StringRef File, InputKind Kind, bool IsSystem = false)
     : File(File.str()), Buffer(nullptr), Kind(Kind), IsSystem(IsSystem) { }
   FrontendInputFile(llvm::MemoryBuffer *buffer, InputKind Kind,
@@ -238,6 +239,9 @@ public:
   /// The list of plugins to load.
   std::vector<std::string> Plugins;
 
+  /// The list of module file extensions.
+  std::vector<IntrusiveRefCntPtr<ModuleFileExtension>> ModuleFileExtensions;
+
   /// \brief The list of module map files to load before processing the input.
   std::vector<std::string> ModuleMapFiles;
 
@@ -258,7 +262,10 @@ public:
   /// \brief File name of the file that will provide record layouts
   /// (in the format produced by -fdump-record-layouts).
   std::string OverrideRecordLayoutsFile;
-  
+
+  /// \brief Auxiliary triple for CUDA compilation.
+  std::string AuxTriple;
+
 public:
   FrontendOptions() :
     DisableFree(false), RelocatablePCH(false), ShowHelp(false),

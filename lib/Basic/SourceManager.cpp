@@ -279,9 +279,7 @@ void LineTableInfo::AddEntry(FileID FID,
 /// getLineTableFilenameID - Return the uniqued ID for the specified filename.
 ///
 unsigned SourceManager::getLineTableFilenameID(StringRef Name) {
-  if (!LineTable)
-    LineTable = new LineTableInfo();
-  return LineTable->getLineTableFilenameID(Name);
+  return getLineTable().getLineTableFilenameID(Name);
 }
 
 
@@ -302,9 +300,7 @@ void SourceManager::AddLineNote(SourceLocation Loc, unsigned LineNo,
   // Remember that this file has #line directives now if it doesn't already.
   const_cast<SrcMgr::FileInfo&>(FileInfo).setHasLineDirectives();
 
-  if (!LineTable)
-    LineTable = new LineTableInfo();
-  LineTable->AddLineNote(LocInfo.first, LocInfo.second, LineNo, FilenameID);
+  getLineTable().AddLineNote(LocInfo.first, LocInfo.second, LineNo, FilenameID);
 }
 
 /// AddLineNote - Add a GNU line marker to the line table.
@@ -332,8 +328,7 @@ void SourceManager::AddLineNote(SourceLocation Loc, unsigned LineNo,
   // Remember that this file has #line directives now if it doesn't already.
   const_cast<SrcMgr::FileInfo&>(FileInfo).setHasLineDirectives();
 
-  if (!LineTable)
-    LineTable = new LineTableInfo();
+  (void) getLineTable();
 
   SrcMgr::CharacteristicKind FileKind;
   if (IsExternCHeader)
@@ -1004,12 +999,17 @@ SourceManager::getExpansionRange(SourceLocation Loc) const {
   return Res;
 }
 
-bool SourceManager::isMacroArgExpansion(SourceLocation Loc) const {
+bool SourceManager::isMacroArgExpansion(SourceLocation Loc,
+                                        SourceLocation *StartLoc) const {
   if (!Loc.isMacroID()) return false;
 
   FileID FID = getFileID(Loc);
   const SrcMgr::ExpansionInfo &Expansion = getSLocEntry(FID).getExpansion();
-  return Expansion.isMacroArgExpansion();
+  if (!Expansion.isMacroArgExpansion()) return false;
+
+  if (StartLoc)
+    *StartLoc = Expansion.getExpansionLocStart();
+  return true;
 }
 
 bool SourceManager::isMacroBodyExpansion(SourceLocation Loc) const {
@@ -1403,7 +1403,7 @@ unsigned SourceManager::getPresumedLineNumber(SourceLocation Loc,
 /// considered to be from a system header.
 SrcMgr::CharacteristicKind
 SourceManager::getFileCharacteristic(SourceLocation Loc) const {
-  assert(!Loc.isInvalid() && "Can't get file characteristic of invalid loc!");
+  assert(Loc.isValid() && "Can't get file characteristic of invalid loc!");
   std::pair<FileID, unsigned> LocInfo = getDecomposedExpansionLoc(Loc);
   bool Invalid = false;
   const SLocEntry &SEntry = getSLocEntry(LocInfo.first, &Invalid);
@@ -1608,7 +1608,7 @@ FileID SourceManager::translateFile(const FileEntry *SourceFile) const {
   // location in the main file.
   Optional<llvm::sys::fs::UniqueID> SourceFileUID;
   Optional<StringRef> SourceFileName;
-  if (!MainFileID.isInvalid()) {
+  if (MainFileID.isValid()) {
     bool Invalid = false;
     const SLocEntry &MainSLoc = getSLocEntry(MainFileID, &Invalid);
     if (Invalid)
@@ -1781,7 +1781,7 @@ SourceLocation SourceManager::translateLineCol(FileID FID,
 ///     110 -> SourceLocation()
 void SourceManager::computeMacroArgsCache(MacroArgsMap *&CachePtr,
                                           FileID FID) const {
-  assert(!FID.isInvalid());
+  assert(FID.isValid());
   assert(!CachePtr);
 
   CachePtr = new MacroArgsMap();

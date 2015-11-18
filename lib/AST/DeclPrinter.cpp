@@ -104,6 +104,7 @@ namespace {
     void PrintTemplateParameters(const TemplateParameterList *Params,
                                  const TemplateArgumentList *Args = nullptr);
     void prettyPrintAttributes(Decl *D);
+    void prettyPrintPragmas(Decl *D);
     void printDeclType(QualType T, StringRef DeclName, bool Pack = false);
   };
 }
@@ -211,13 +212,41 @@ raw_ostream& DeclPrinter::Indent(unsigned Indentation) {
 void DeclPrinter::prettyPrintAttributes(Decl *D) {
   if (Policy.PolishForDeclaration)
     return;
-	
+
   if (D->hasAttrs()) {
 	  //Out << SExpCh(" (","");
     AttrVec &Attrs = D->getAttrs();
-    for (AttrVec::const_iterator i=Attrs.begin(), e=Attrs.end(); i!=e; ++i) {
-      Attr *A = *i;
-      A->printPretty(Out, Policy);
+    for (auto *A : Attrs) {
+      switch (A->getKind()) {
+#define ATTR(X)
+#define PRAGMA_SPELLING_ATTR(X) case attr::X:
+#include "clang/Basic/AttrList.inc"
+        break;
+      default:
+        A->printPretty(Out, Policy);
+        break;
+      }
+    }
+  }
+}
+
+void DeclPrinter::prettyPrintPragmas(Decl *D) {
+  if (Policy.PolishForDeclaration)
+    return;
+
+  if (D->hasAttrs()) {
+    AttrVec &Attrs = D->getAttrs();
+    for (auto *A : Attrs) {
+      switch (A->getKind()) {
+#define ATTR(X)
+#define PRAGMA_SPELLING_ATTR(X) case attr::X:
+#include "clang/Basic/AttrList.inc"
+        A->printPretty(Out, Policy);
+        Indent();
+        break;
+      default:
+        break;
+      }
     }
 	  //Out << SExpR();
   }
@@ -432,6 +461,10 @@ void DeclPrinter::VisitEnumConstantDecl(EnumConstantDecl *D) {
 
 void DeclPrinter::VisitFunctionDecl(FunctionDecl *D) {
 	Out << SExpCh("(defun ","");
+
+	if (!D->getDescribedFunctionTemplate() &&
+	      !D->isFunctionTemplateSpecialization())
+	    prettyPrintPragmas(D);
   CXXConstructorDecl *CDecl = dyn_cast<CXXConstructorDecl>(D);
   CXXConversionDecl *ConversionDecl = dyn_cast<CXXConversionDecl>(D);
 	Out << SExpL();
@@ -441,7 +474,7 @@ void DeclPrinter::VisitFunctionDecl(FunctionDecl *D) {
     case SC_Extern: Out << "extern "; break;
     case SC_Static: Out << "static "; break;
     case SC_PrivateExtern: Out << "__private_extern__ "; break;
-    case SC_Auto: case SC_Register: case SC_OpenCLWorkGroupLocal:
+    case SC_Auto: case SC_Register:
       llvm_unreachable("invalid for functions");
     }
 
@@ -671,6 +704,7 @@ void DeclPrinter::VisitFriendDecl(FriendDecl *D) {
 
 void DeclPrinter::VisitFieldDecl(FieldDecl *D) {
 	Out << SExpL() << SExpL();
+	// FIXME: add printing of pragma attributes if required.
   if (!Policy.SuppressSpecifiers && D->isMutable())
     Out << "mutable ";
   if (!Policy.SuppressSpecifiers && D->isModulePrivate())
@@ -703,6 +737,7 @@ void DeclPrinter::VisitLabelDecl(LabelDecl *D) {
 
 void DeclPrinter::VisitVarDecl(VarDecl *D) {
 	Out << SExpL();
+  prettyPrintPragmas(D);
   if (!Policy.SuppressSpecifiers) {
 	  Out << SExpL();
     StorageClass SC = D->getStorageClass();
@@ -814,6 +849,7 @@ void DeclPrinter::VisitEmptyDecl(EmptyDecl *D) {
 
 void DeclPrinter::VisitCXXRecordDecl(CXXRecordDecl *D) {
 	Out << SExpL() << SExpL();
+  // FIXME: add printing of pragma attributes if required.
   if (!Policy.SuppressSpecifiers && D->isModulePrivate())
     Out << "__module_private__ ";
 	Out << SExpCh(") ", "");
@@ -953,11 +989,13 @@ void DeclPrinter::VisitFunctionTemplateDecl(FunctionTemplateDecl *D) {
   if (PrintInstantiation) {
     TemplateParameterList *Params = D->getTemplateParameters();
     for (auto *I : D->specializations()) {
+      prettyPrintPragmas(I);
       PrintTemplateParameters(Params, I->getTemplateSpecializationArgs());
       Visit(I);
     }
   }
 
+  prettyPrintPragmas(D->getTemplatedDecl());
   return VisitRedeclarableTemplateDecl(D);
 }
 
@@ -1127,7 +1165,7 @@ void DeclPrinter::VisitObjCInterfaceDecl(ObjCInterfaceDecl *OID) {
   }
   
   if (SID)
-    Out << " : " << OID->getSuperClass()->getName();
+    Out << " : " << QualType(OID->getSuperClassType(), 0).getAsString(Policy);
 
   // Protocols?
   const ObjCList<ObjCProtocolDecl> &Protocols = OID->getReferencedProtocols();
@@ -1338,7 +1376,7 @@ void DeclPrinter::VisitUnresolvedUsingValueDecl(UnresolvedUsingValueDecl *D) {
   if (!D->isAccessDeclaration())
     Out << "using ";
   D->getQualifier()->print(Out, Policy);
-  Out << D->getName();
+  Out << D->getDeclName();
 }
 
 void DeclPrinter::VisitUsingShadowDecl(UsingShadowDecl *D) {

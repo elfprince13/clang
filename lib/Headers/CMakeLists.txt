@@ -17,6 +17,7 @@ set(files
   bmiintrin.h
   cpuid.h
   cuda_builtin_vars.h
+  cuda_runtime.h
   emmintrin.h
   f16cintrin.h
   float.h
@@ -66,6 +67,10 @@ set(files
   x86intrin.h
   xmmintrin.h
   xopintrin.h
+  xsaveintrin.h
+  xsaveoptintrin.h
+  xsavecintrin.h
+  xsavesintrin.h
   xtestintrin.h
   )
 

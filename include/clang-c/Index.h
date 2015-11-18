@@ -32,7 +32,7 @@
  * compatible, thus CINDEX_VERSION_MAJOR is expected to remain stable.
  */
 #define CINDEX_VERSION_MAJOR 0
-#define CINDEX_VERSION_MINOR 30
+#define CINDEX_VERSION_MINOR 31
 
 #define CINDEX_VERSION_ENCODE(major, minor) ( \
       ((major) * 10000)                       \
@@ -1982,7 +1982,11 @@ enum CXCursorKind {
    */
   CXCursor_ObjCSelfExpr                  = 146,
 
-  CXCursor_LastExpr                      = CXCursor_ObjCSelfExpr,
+  /** \brief OpenMP 4.0 [2.4, Array Section].
+   */
+  CXCursor_OMPArraySectionExpr           = 147,
+
+  CXCursor_LastExpr                      = CXCursor_OMPArraySectionExpr,
 
   /* Statements */
   CXCursor_FirstStmt                     = 200,
@@ -2275,7 +2279,8 @@ enum CXCursorKind {
   CXCursor_CUDAGlobalAttr                = 414,
   CXCursor_CUDAHostAttr                  = 415,
   CXCursor_CUDASharedAttr                = 416,
-  CXCursor_LastAttr                      = CXCursor_CUDASharedAttr,
+  CXCursor_VisibilityAttr                = 417,
+  CXCursor_LastAttr                      = CXCursor_VisibilityAttr,
 
   /* Preprocessing */
   CXCursor_PreprocessingDirective        = 500,
@@ -2291,8 +2296,9 @@ enum CXCursorKind {
    * \brief A module import declaration.
    */
   CXCursor_ModuleImportDecl              = 600,
+  CXCursor_TypeAliasTemplateDecl         = 601,
   CXCursor_FirstExtraDecl                = CXCursor_ModuleImportDecl,
-  CXCursor_LastExtraDecl                 = CXCursor_ModuleImportDecl,
+  CXCursor_LastExtraDecl                 = CXCursor_TypeAliasTemplateDecl,
 
   /**
    * \brief A code completion overload candidate.
@@ -2855,7 +2861,8 @@ enum CXTypeKind {
   CXType_IncompleteArray = 114,
   CXType_VariableArray = 115,
   CXType_DependentSizedArray = 116,
-  CXType_MemberPointer = 117
+  CXType_MemberPointer = 117,
+  CXType_Auto = 118
 };
 
 /**
@@ -3858,6 +3865,12 @@ CINDEX_LINKAGE CXString clang_Cursor_getBriefCommentText(CXCursor C);
 CINDEX_LINKAGE CXString clang_Cursor_getMangling(CXCursor);
 
 /**
+ * \brief Retrieve the CXStrings representing the mangled symbols of the C++
+ * constructor or destructor at the cursor.
+ */
+CINDEX_LINKAGE CXStringSet *clang_Cursor_getCXXManglings(CXCursor);
+
+/**
  * @}
  */
 
@@ -3950,6 +3963,11 @@ CXFile clang_Module_getTopLevelHeader(CXTranslationUnit,
  *
  * @{
  */
+
+/**
+ * \brief Determine if a C++ field is declared 'mutable'.
+ */
+CINDEX_LINKAGE unsigned clang_CXXField_isMutable(CXCursor C);
 
 /**
  * \brief Determine if a C++ member function or member function template is

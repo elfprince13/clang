@@ -382,7 +382,8 @@ public:
       const DirectoryLookup *FromDir, const DirectoryLookup *&CurDir,
       ArrayRef<std::pair<const FileEntry *, const DirectoryEntry *>> Includers,
       SmallVectorImpl<char> *SearchPath, SmallVectorImpl<char> *RelativePath,
-      ModuleMap::KnownHeader *SuggestedModule, bool SkipCache = false);
+      Module *RequestingModule, ModuleMap::KnownHeader *SuggestedModule,
+      bool SkipCache = false);
 
   /// \brief Look up a subframework for the specified \#include file.
   ///
@@ -391,11 +392,9 @@ public:
   /// HIToolbox is a subframework within Carbon.framework.  If so, return
   /// the FileEntry for the designated file, otherwise return null.
   const FileEntry *LookupSubframeworkHeader(
-      StringRef Filename,
-      const FileEntry *RelativeFileEnt,
-      SmallVectorImpl<char> *SearchPath,
-      SmallVectorImpl<char> *RelativePath,
-      ModuleMap::KnownHeader *SuggestedModule);
+      StringRef Filename, const FileEntry *RelativeFileEnt,
+      SmallVectorImpl<char> *SearchPath, SmallVectorImpl<char> *RelativePath,
+      Module *RequestingModule, ModuleMap::KnownHeader *SuggestedModule);
 
   /// \brief Look up the specified framework name in our framework cache.
   /// \returns The DirectoryEntry it is in if we know, null otherwise.
@@ -561,6 +560,32 @@ private:
   /// of the given search directory.
   void loadSubdirectoryModuleMaps(DirectoryLookup &SearchDir);
 
+  /// \brief Find and suggest a usable module for the given file.
+  ///
+  /// \return \c true if the file can be used, \c false if we are not permitted to
+  ///         find this file due to requirements from \p RequestingModule.
+  bool findUsableModuleForHeader(const FileEntry *File,
+                                 const DirectoryEntry *Root,
+                                 Module *RequestingModule,
+                                 ModuleMap::KnownHeader *SuggestedModule,
+                                 bool IsSystemHeaderDir);
+
+  /// \brief Find and suggest a usable module for the given file, which is part of
+  /// the specified framework.
+  ///
+  /// \return \c true if the file can be used, \c false if we are not permitted to
+  ///         find this file due to requirements from \p RequestingModule.
+  bool findUsableModuleForFrameworkHeader(
+      const FileEntry *File, StringRef FrameworkDir, Module *RequestingModule,
+      ModuleMap::KnownHeader *SuggestedModule, bool IsSystemFramework);
+
+  /// \brief Look up the file with the specified name and determine its owning
+  /// module.
+  const FileEntry *
+  getFileAndSuggestModule(StringRef FileName, const DirectoryEntry *Dir,
+                          bool IsSystemHeaderDir, Module *RequestingModule,
+                          ModuleMap::KnownHeader *SuggestedModule);
+
 public:
   /// \brief Retrieve the module map.
   ModuleMap &getModuleMap() { return ModMap; }
@@ -570,11 +595,16 @@ public:
   
   unsigned header_file_size() const { return FileInfo.size(); }
 
-  /// \brief Return the HeaderFileInfo structure for the specified FileEntry.
+  /// \brief Return the HeaderFileInfo structure for the specified FileEntry,
+  /// in preparation for updating it in some way.
   HeaderFileInfo &getFileInfo(const FileEntry *FE);
 
-  /// \brief Return the HeaderFileInfo structure for the specified FileEntry.
-  const HeaderFileInfo *getExistingFileInfo(const FileEntry *FE) const;
+  /// \brief Return the HeaderFileInfo structure for the specified FileEntry,
+  /// if it has ever been filled in.
+  /// \param WantExternal Whether the caller wants purely-external header file
+  ///        info (where \p External is true).
+  const HeaderFileInfo *getExistingFileInfo(const FileEntry *FE,
+                                            bool WantExternal = true) const;
 
   // Used by external tools
   typedef std::vector<DirectoryLookup>::const_iterator search_dir_iterator;

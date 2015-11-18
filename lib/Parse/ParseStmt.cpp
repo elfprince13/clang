@@ -271,6 +271,10 @@ Retry:
     Res = ParseReturnStatement();
     SemiError = "return";
     break;
+  case tok::kw_co_return:            // C++ Coroutines: co_return statement
+    Res = ParseReturnStatement();
+    SemiError = "co_return";
+    break;
 
   case tok::kw_asm: {
     ProhibitAttributes(Attrs);
@@ -956,7 +960,8 @@ StmtResult Parser::ParseCompoundStatementBody(bool isStmtExpr) {
       Stmts.push_back(R.get());
   }
 
-  while (Tok.isNot(tok::r_brace) && !isEofOrEom()) {
+  while (!tryParseMisplacedModuleImport() && Tok.isNot(tok::r_brace) &&
+         Tok.isNot(tok::eof)) {
     if (Tok.is(tok::annot_pragma_unused)) {
       HandlePragmaUnused();
       continue;
@@ -1454,7 +1459,10 @@ bool Parser::isForRangeIdentifier() {
 ///         'for' '(' declaration expr[opt] ';' expr[opt] ')' statement
 /// [C++]   'for' '(' for-init-statement condition[opt] ';' expression[opt] ')'
 /// [C++]       statement
-/// [C++0x] 'for' '(' for-range-declaration : for-range-initializer ) statement
+/// [C++0x] 'for'
+///             'co_await'[opt]    [Coroutines]
+///             '(' for-range-declaration ':' for-range-initializer ')'
+///             statement
 /// [OBJC2] 'for' '(' declaration 'in' expr ')' statement
 /// [OBJC2] 'for' '(' expr 'in' expr ')' statement
 ///
@@ -1470,6 +1478,10 @@ bool Parser::isForRangeIdentifier() {
 StmtResult Parser::ParseForStatement(SourceLocation *TrailingElseLoc) {
   assert(Tok.is(tok::kw_for) && "Not a for stmt!");
   SourceLocation ForLoc = ConsumeToken();  // eat the 'for'.
+
+  SourceLocation CoawaitLoc;
+  if (Tok.is(tok::kw_co_await))
+    CoawaitLoc = ConsumeToken();
 
   if (Tok.isNot(tok::l_paren)) {
     Diag(Tok, diag::err_expected_lparen_after) << "for";
@@ -1677,6 +1689,13 @@ StmtResult Parser::ParseForStatement(SourceLocation *TrailingElseLoc) {
   // Match the ')'.
   T.consumeClose();
 
+  // C++ Coroutines [stmt.iter]:
+  //   'co_await' can only be used for a range-based for statement.
+  if (CoawaitLoc.isValid() && !ForRange) {
+    Diag(CoawaitLoc, diag::err_for_co_await_not_range_for);
+    CoawaitLoc = SourceLocation();
+  }
+
   // We need to perform most of the semantic analysis for a C++0x for-range
   // statememt before parsing the body, in order to be able to deduce the type
   // of an auto-typed loop variable.
@@ -1684,12 +1703,10 @@ StmtResult Parser::ParseForStatement(SourceLocation *TrailingElseLoc) {
   StmtResult ForEachStmt;
 
   if (ForRange) {
-    ForRangeStmt = Actions.ActOnCXXForRangeStmt(ForLoc, FirstPart.get(),
-                                                ForRangeInit.ColonLoc,
-                                                ForRangeInit.RangeExpr.get(),
-                                                T.getCloseLocation(),
-                                                Sema::BFRK_Build);
-
+    ForRangeStmt = Actions.ActOnCXXForRangeStmt(
+        getCurScope(), ForLoc, CoawaitLoc, FirstPart.get(),
+        ForRangeInit.ColonLoc, ForRangeInit.RangeExpr.get(),
+        T.getCloseLocation(), Sema::BFRK_Build);
 
   // Similarly, we need to do the semantic analysis for a for-range
   // statement immediately in order to close over temporaries correctly.
@@ -1811,13 +1828,19 @@ StmtResult Parser::ParseBreakStatement() {
 /// ParseReturnStatement
 ///       jump-statement:
 ///         'return' expression[opt] ';'
+///         'return' braced-init-list ';'
+///         'co_return' expression[opt] ';'
+///         'co_return' braced-init-list ';'
 StmtResult Parser::ParseReturnStatement() {
-  assert(Tok.is(tok::kw_return) && "Not a return stmt!");
+  assert((Tok.is(tok::kw_return) || Tok.is(tok::kw_co_return)) &&
+         "Not a return stmt!");
+  bool IsCoreturn = Tok.is(tok::kw_co_return);
   SourceLocation ReturnLoc = ConsumeToken();  // eat the 'return'.
 
   ExprResult R;
   if (Tok.isNot(tok::semi)) {
-    if (Tok.is(tok::code_completion)) {
+    // FIXME: Code completion for co_return.
+    if (Tok.is(tok::code_completion) && !IsCoreturn) {
       Actions.CodeCompleteReturn(getCurScope());
       cutOffParsing();
       return StmtError();
@@ -1837,6 +1860,8 @@ StmtResult Parser::ParseReturnStatement() {
       return StmtError();
     }
   }
+  if (IsCoreturn)
+    return Actions.ActOnCoreturnStmt(ReturnLoc, R.get());
   return Actions.ActOnReturnStmt(ReturnLoc, R.get(), getCurScope());
 }
 
