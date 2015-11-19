@@ -1524,18 +1524,14 @@ private:
 };
 
 // Generate Function or Method Decl's around a skeleton.
-class ExposedSkeletonDecl : public DeclaratorDecl, public DeclContext {
+class ExposedSkeletonDecl : public NamedDecl, public DeclContext {
 	
 private:
 	SkeletonStmt * Body;
 	
 protected:
-	ExposedSkeletonDecl(ASTContext &C, DeclContext *DC, SourceLocation StartLoc,
-				 const DeclarationNameInfo &NameInfo,
-				 QualType T, TypeSourceInfo *TInfo)
-    : DeclaratorDecl(ExposedSkeleton, DC, NameInfo.getLoc(), NameInfo.getName(), T, TInfo,
-                     StartLoc),
-	DeclContext(ExposedSkeleton), Body(nullptr) {};
+	ExposedSkeletonDecl(ASTContext &C, DeclContext *DC, SourceLocation StartLoc, const IdentifierInfo * Id, SkeletonStmt *Body=nullptr)
+    : NamedDecl(ExposedSkeleton, DC, StartLoc, DeclarationName(Id)), DeclContext(ExposedSkeleton), Body(Body) {};
 
 public:
 	
@@ -1549,6 +1545,7 @@ public:
 	static bool classofKind(Kind K) {
 		return K == ExposedSkeleton;
 	}
+	
 	static DeclContext *castToDeclContext(const ExposedSkeletonDecl *D) {
 		return static_cast<DeclContext *>(const_cast<ExposedSkeletonDecl*>(D));
 	}
@@ -1556,6 +1553,10 @@ public:
 		return static_cast<ExposedSkeletonDecl *>(const_cast<DeclContext*>(DC));
 	}
 	
+	static ExposedSkeletonDecl *Create(ASTContext &C, DeclContext *DC, SourceLocation StartLoc,
+									   const IdentifierInfo * Id, SkeletonStmt *Body=nullptr) {
+		return new (C, DC) ExposedSkeletonDecl(C, DC, StartLoc, Id, Body);
+	}
 	static ExposedSkeletonDecl *CreateDeserialized(ASTContext &C, unsigned ID);
 };
 

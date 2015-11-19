@@ -3850,6 +3850,7 @@ ImplicitParamDecl *ImplicitParamDecl::CreateDeserialized(ASTContext &C,
                                        QualType());
 }
 
+
 FunctionDecl *FunctionDecl::Create(ASTContext &C, DeclContext *DC,
                                    SourceLocation StartLoc,
                                    const DeclarationNameInfo &NameInfo,
@@ -3866,7 +3867,7 @@ FunctionDecl *FunctionDecl::Create(ASTContext &C, DeclContext *DC,
 }
 
 ExposedSkeletonDecl *ExposedSkeletonDecl::CreateDeserialized(ASTContext &C, unsigned ID) {
-	return new (C, ID) ExposedSkeletonDecl(C, nullptr, SourceLocation(), DeclarationNameInfo(), QualType(), nullptr);
+	return new (C, ID) ExposedSkeletonDecl(C, nullptr, SourceLocation(), nullptr, nullptr);
 }
 
 FunctionDecl *FunctionDecl::CreateDeserialized(ASTContext &C, unsigned ID) {

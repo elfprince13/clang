@@ -427,7 +427,8 @@ namespace  {
     void VisitImportDecl(const ImportDecl *D);
 
     // C++ Decls
-    void VisitNamespaceDecl(const NamespaceDecl *D);
+			void VisitNamespaceDecl(const NamespaceDecl *D);
+			void VisitExposedSkeletonDecl(const ExposedSkeletonDecl *D);
     void VisitUsingDirectiveDecl(const UsingDirectiveDecl *D);
     void VisitNamespaceAliasDecl(const NamespaceAliasDecl *D);
     void VisitTypeAliasDecl(const TypeAliasDecl *D);
@@ -1202,6 +1203,11 @@ void ASTDumper::VisitNamespaceDecl(const NamespaceDecl *D) {
     OS << " inline";
   if (!D->isOriginalNamespace())
     dumpDeclRef(D->getOriginalNamespace(), "original");
+}
+
+
+void ASTDumper::VisitExposedSkeletonDecl(const ExposedSkeletonDecl *D) {
+	dumpStmt(D->getBody());
 }
 
 void ASTDumper::VisitUsingDirectiveDecl(const UsingDirectiveDecl *D) {

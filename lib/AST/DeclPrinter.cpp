@@ -79,6 +79,7 @@ namespace {
     void VisitImportDecl(ImportDecl *D);
     void VisitStaticAssertDecl(StaticAssertDecl *D);
     void VisitNamespaceDecl(NamespaceDecl *D);
+	  void VisitExposedSkeletonDecl(ExposedSkeletonDecl *D);
     void VisitUsingDirectiveDecl(UsingDirectiveDecl *D);
     void VisitNamespaceAliasDecl(NamespaceAliasDecl *D);
     void VisitCXXRecordDecl(CXXRecordDecl *D);
@@ -821,6 +822,12 @@ void DeclPrinter::VisitStaticAssertDecl(StaticAssertDecl *D) {
 //----------------------------------------------------------------------------
 // C++ declarations
 //----------------------------------------------------------------------------
+void DeclPrinter::VisitExposedSkeletonDecl(ExposedSkeletonDecl *D) {
+	if(D->getBody() != nullptr) {
+		D->getBody()->printPretty(Out, nullptr, Policy, Indentation);
+	}
+}
+
 void DeclPrinter::VisitNamespaceDecl(NamespaceDecl *D) {
   if (D->isInline())
     Out << "inline ";

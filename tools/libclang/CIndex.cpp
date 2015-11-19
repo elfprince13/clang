@@ -5160,6 +5160,7 @@ CXCursor clang_getCursorDefinition(CXCursor C) {
   // Declaration kinds that don't really separate the notions of
   // declaration and definition.
   case Decl::Namespace:
+	  case Decl::ExposedSkeleton:
   case Decl::Typedef:
   case Decl::TypeAlias:
   case Decl::TypeAliasTemplate:

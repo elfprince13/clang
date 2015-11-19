@@ -24,12 +24,11 @@ Parser::DeclGroupPtrTy Parser::ParseTopLevelSkeleton(ParsingDeclSpec *DS) {
 	StmtResult skelStmt = ParseSkeleton(AtLoc);
 	
 	DeclGroupPtrTy ret = DeclGroupPtrTy();
-	if(false/*skelStmt.isUsable()*/){
-		
-		
-		
+	if(skelStmt.isUsable()){
 		Decl * skelDecl = Actions.ActOnExternalSkeleton(getCurScope(), *DS, (SkeletonStmt*)(skelStmt.get()));
 		ret = Actions.ConvertDeclToDeclGroup(skelDecl);
+	} else {
+		Diag(AtLoc, diag::err_expected_statement);
 	}
 	return ret; // ConvertDeclToDeclGroup
 }
