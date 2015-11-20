@@ -214,6 +214,12 @@ void DeclContextPrinter::PrintDeclContext(const DeclContext* DC,
     Out << *ND;
     break;
   }
+	  case Decl::ExposedSkeleton: {
+		  Out << "[skeleton ]";
+		  const ExposedSkeletonDecl* SD = cast<ExposedSkeletonDecl>(DC);
+		  Out << *SD;
+		  break;
+	  }
   case Decl::Enum: {
     const EnumDecl* ED = cast<EnumDecl>(DC);
     if (ED->isCompleteDefinition())

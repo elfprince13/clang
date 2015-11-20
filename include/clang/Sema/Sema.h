@@ -1840,7 +1840,7 @@ public:
   void ActOnPopScope(SourceLocation Loc, Scope *S);
   void ActOnTranslationUnitScope(Scope *S);
 		
-  Decl *ActOnExternalSkeleton(Scope *S, DeclSpec &DS, SkeletonStmt * Body);
+  Decl *ActOnExposedSkeleton(Scope *S, DeclSpec &DS, SkeletonStmt * Body);
 
   Decl *ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS,
                                    DeclSpec &DS);

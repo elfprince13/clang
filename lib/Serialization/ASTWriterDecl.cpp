@@ -52,7 +52,8 @@ namespace clang {
     void VisitTranslationUnitDecl(TranslationUnitDecl *D);
     void VisitNamedDecl(NamedDecl *D);
     void VisitLabelDecl(LabelDecl *LD);
-    void VisitNamespaceDecl(NamespaceDecl *D);
+	  void VisitNamespaceDecl(NamespaceDecl *D);
+	  void VisitExposedSkeletonDecl(ExposedSkeletonDecl *D);
     void VisitUsingDirectiveDecl(UsingDirectiveDecl *D);
     void VisitNamespaceAliasDecl(NamespaceAliasDecl *D);
     void VisitTypeDecl(TypeDecl *D);
@@ -1035,6 +1036,12 @@ void ASTDeclWriter::VisitLabelDecl(LabelDecl *D) {
   Code = serialization::DECL_LABEL;
 }
 
+
+void ASTDeclWriter::VisitExposedSkeletonDecl(ExposedSkeletonDecl *D){
+	VisitNamedDecl(D);
+	Writer.AddStmt(D->getBody());
+	Code = serialization::DECL_EXPOSED_SKELETON;
+}
 
 void ASTDeclWriter::VisitNamespaceDecl(NamespaceDecl *D) {
   VisitRedeclarable(D);

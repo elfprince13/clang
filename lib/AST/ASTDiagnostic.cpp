@@ -429,6 +429,8 @@ void clang::FormatASTNodeDiagnosticArgument(
           OS << "method ";
         else if (isa<FunctionDecl>(ND))
           OS << "function ";
+		  else if (isa<ExposedSkeletonDecl>(ND))
+			  OS << "skeleton ";
 
         OS << '\'';
         ND->getNameForDiagnostic(OS, Context.getPrintingPolicy(), true);

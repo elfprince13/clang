@@ -1777,7 +1777,9 @@ bool RecursiveASTVisitor<Derived>::TraverseFunctionHelper(FunctionDecl *D) {
   return true;
 }
 	
-	DEF_TRAVERSE_DECL(ExposedSkeletonDecl, {})
+DEF_TRAVERSE_DECL(ExposedSkeletonDecl, {
+	TRY_TO(TraverseStmt(D->getBody()));
+})
 	
 DEF_TRAVERSE_DECL(FunctionDecl, {
   // We skip decls_begin/decls_end, which are already covered by

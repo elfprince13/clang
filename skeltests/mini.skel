@@ -13,8 +13,11 @@ template<> void unroll<0>(char a) {
 	return;
 }
 
-@TLD(top_level_def);
+namespace ns {
+	int i = 5;
+}
 
+@TLD(top_level_def);
 
 int main(int argc, char **argv) {
   int ret;

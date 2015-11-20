@@ -292,6 +292,8 @@ const internal::VariadicDynCastAllOfMatcher<Decl, NamedDecl> namedDecl;
 /// namespaceDecl()
 ///   matches "namespace {}" and "namespace test {}"
 const internal::VariadicDynCastAllOfMatcher<Decl, NamespaceDecl> namespaceDecl;
+	
+const internal::VariadicDynCastAllOfMatcher<Decl, ExposedSkeletonDecl> exposedSkeletonDecl;
 
 /// \brief Matches a declaration of a namespace alias.
 ///

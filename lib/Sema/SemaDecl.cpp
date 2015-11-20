@@ -3556,13 +3556,14 @@ void Sema::MergeVarDecl(VarDecl *New, LookupResult &Previous) {
 }
 
 
-Decl *Sema::ActOnExternalSkeleton(Scope *S, DeclSpec &DS, SkeletonStmt * Body){
+Decl *Sema::ActOnExposedSkeleton(Scope *S, DeclSpec &DS, SkeletonStmt * Body){
 	// This should never be called if Body is nullptr
 	
 	DeclContext *DC = CurContext;
 	ASTContext &C = Context;
 	
 	ExposedSkeletonDecl * Decl = ExposedSkeletonDecl::Create(C, DC, Body->getLocStart(), Body->getName(), Body);
+	DC->addDecl(Decl);
 	return Decl;
 }
 

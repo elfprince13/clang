@@ -242,6 +242,7 @@ namespace clang {
     void VisitNamedDecl(NamedDecl *ND);
     void VisitLabelDecl(LabelDecl *LD);
     void VisitNamespaceDecl(NamespaceDecl *D);
+	  void VisitExposedSkeletonDecl(ExposedSkeletonDecl *D);
     void VisitUsingDirectiveDecl(UsingDirectiveDecl *D);
     void VisitNamespaceAliasDecl(NamespaceAliasDecl *D);
     void VisitTypeDecl(TypeDecl *TD);
@@ -1295,6 +1296,12 @@ void ASTDeclReader::VisitLinkageSpecDecl(LinkageSpecDecl *D) {
 void ASTDeclReader::VisitLabelDecl(LabelDecl *D) {
   VisitNamedDecl(D);
   D->setLocStart(ReadSourceLocation(Record, Idx));
+}
+
+
+void ASTDeclReader::VisitExposedSkeletonDecl(ExposedSkeletonDecl *D){
+	VisitNamedDecl(D);
+	D->setBody(cast_or_null<SkeletonStmt>(Reader.ReadStmt(F)));
 }
 
 void ASTDeclReader::VisitNamespaceDecl(NamespaceDecl *D) {

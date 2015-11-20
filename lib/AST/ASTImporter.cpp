@@ -130,7 +130,8 @@ namespace clang {
     bool IsStructuralMatch(ClassTemplateDecl *From, ClassTemplateDecl *To);
     bool IsStructuralMatch(VarTemplateDecl *From, VarTemplateDecl *To);
     Decl *VisitDecl(Decl *D);
-    Decl *VisitTranslationUnitDecl(TranslationUnitDecl *D);
+	Decl *VisitTranslationUnitDecl(TranslationUnitDecl *D);
+	Decl *VisitExposedSkeletonDecl(ExposedSkeletonDecl *D);
     Decl *VisitNamespaceDecl(NamespaceDecl *D);
     Decl *VisitTypedefNameDecl(TypedefNameDecl *D, bool IsAlias);
     Decl *VisitTypedefDecl(TypedefDecl *D);
@@ -2306,6 +2307,12 @@ Decl *ASTNodeImporter::VisitTranslationUnitDecl(TranslationUnitDecl *D) {
   Importer.Imported(D, ToD);
     
   return ToD;
+}
+
+
+Decl *ASTNodeImporter::VisitExposedSkeletonDecl(ExposedSkeletonDecl *D) {
+	Importer.FromDiag(D->getLocation(), diag::err_unsupported_ast_node) << ((Decl*)D)->getDeclKindName();
+	return nullptr;
 }
 
 Decl *ASTNodeImporter::VisitNamespaceDecl(NamespaceDecl *D) {
