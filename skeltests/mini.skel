@@ -17,7 +17,6 @@ template<> void unroll<0>(char a) {
 
 int main(int argc, char **argv) {
   int ret;
-      const int i = reinterpret_cast<int>(@I(test_iterator));
   if ((argc % 4) == 0) {
     @Loop1d(test_loop)[@I][= 0][= argc] {
       const int i = reinterpret_cast<int>(@I(test_iterator));
@@ -26,7 +25,7 @@ int main(int argc, char **argv) {
       puts(*(argv + i));
     }
     const char nl =
-        '\n'; // oops need to figure out how to escape strings properly (and also not hang the expander)
+        (char)'\n'; // oops need to figure out how to escape strings properly (and also not hang the expander)
     puts(&nl);
     ret = 0;
   } else {

@@ -1513,10 +1513,9 @@ void StmtPrinter::VisitExtVectorElementExpr(ExtVectorElementExpr *Node) {
   OS << Node->getAccessor().getName();
 }
 void StmtPrinter::VisitCStyleCastExpr(CStyleCastExpr *Node) {
-	OS << SExpCh("(c-cast ","");
-  OS << '(';
+	OS << '(' << SExpCh("c-cast ","");
   Node->getTypeAsWritten().print(OS, Policy);
-  OS << ')' << SExpCh(" ", "");
+  OS << SExpCh(" ", ")");
   PrintExpr(Node->getSubExpr());
 	OS << SExpR();
 }
@@ -1818,9 +1817,10 @@ void StmtPrinter::VisitCUDAKernelCallExpr(CUDAKernelCallExpr *Node) {
 }
 
 void StmtPrinter::VisitCXXNamedCastExpr(CXXNamedCastExpr *Node) {
-  OS << Node->getCastName() << '<';
+	OS << SExpL();
+  OS << Node->getCastName() << SExpCh(" ", "<");
   Node->getTypeAsWritten().print(OS, Policy);
-  OS << ">(";
+  OS << SExpCh(" ",">(");
   PrintExpr(Node->getSubExpr());
   OS << ")";
 }
