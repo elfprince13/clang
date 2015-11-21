@@ -295,6 +295,10 @@ void DeclPrinter::VisitDeclContext(DeclContext *DC, bool Indent) {
   SmallVector<Decl*, 2> Decls;
   for (DeclContext::decl_iterator D = DC->decls_begin(), DEnd = DC->decls_end();
        D != DEnd; ++D) {
+	  
+	  if(SExp() && !(DC->getParentASTContext().DeclMustBeEmitted(*D))){
+		  continue;
+	  }
 
     // Don't print ObjCIvarDecls, as they are printed when visiting the
     // containing ObjCInterfaceDecl.

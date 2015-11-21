@@ -953,6 +953,7 @@ DeclContext *DeclContext::getPrimaryContext() {
   case Decl::LinkageSpec:
   case Decl::Block:
   case Decl::Captured:
+	  case Decl::ExposedSkeleton:
     // There is only one DeclContext for these entities.
     return this;
 

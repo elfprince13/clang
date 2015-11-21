@@ -21,15 +21,26 @@ using namespace clang;
 
 Parser::DeclGroupPtrTy Parser::ParseTopLevelSkeleton(ParsingDeclSpec *DS) {
 	SourceLocation AtLoc = ConsumeToken();
-	StmtResult skelStmt = ParseSkeletonStmt(AtLoc);
 	
 	DeclGroupPtrTy ret = DeclGroupPtrTy();
+	ExposedSkeletonDecl * skelDecl = Actions.ActOnExposedSkeleton(getCurScope(), *DS, nullptr);
+	
+	ParseScope BodyScope(this, Scope::FnScope|Scope::DeclScope);
+	Actions.PushDeclContext(getCurScope(), skelDecl);
+	
+	StmtResult skelStmt = ParseSkeletonStmt(AtLoc);
 	if(skelStmt.isUsable()){
-		Decl * skelDecl = Actions.ActOnExposedSkeleton(getCurScope(), *DS, (SkeletonStmt*)(skelStmt.get()));
-		ret = Actions.ConvertDeclToDeclGroup(skelDecl);
+		SkeletonStmt * body = (SkeletonStmt*)(skelStmt.get());
+		skelDecl->setBody(body);
+		skelDecl->setLocation(body->getLocStart());
+		skelDecl->setDeclName(DeclarationName(body->getHeader()->getName()));
 	} else {
 		Diag(AtLoc, diag::err_expected_statement);
 	}
+	Actions.PopDeclContext();
+	ret = Actions.ConvertDeclToDeclGroup(skelDecl);
+	
+	BodyScope.Exit();
 	return ret; // ConvertDeclToDeclGroup
 }
 

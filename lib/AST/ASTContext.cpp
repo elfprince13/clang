@@ -8387,6 +8387,9 @@ GVALinkage ASTContext::GetGVALinkageForVariable(const VarDecl *VD) {
 }
 
 bool ASTContext::DeclMustBeEmitted(const Decl *D) {
+	if (const ExposedSkeletonDecl *SD = dyn_cast<ExposedSkeletonDecl>(D)){
+		return true;
+	}
   if (const VarDecl *VD = dyn_cast<VarDecl>(D)) {
     if (!VD->isFileVarDecl())
       return false;

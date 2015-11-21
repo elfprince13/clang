@@ -3044,7 +3044,7 @@ public:
 
   /// getOpcodeStr - Turn an Opcode enum value into the punctuation char it
   /// corresponds to, e.g. "<<=".
-  static StringRef getOpcodeStr(Opcode Op);
+  static StringRef getOpcodeStr(Opcode Op, bool sexp = false);
 
   StringRef getOpcodeStr() const { return getOpcodeStr(getOpcode()); }
 

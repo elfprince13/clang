@@ -3556,13 +3556,14 @@ void Sema::MergeVarDecl(VarDecl *New, LookupResult &Previous) {
 }
 
 
-Decl *Sema::ActOnExposedSkeleton(Scope *S, DeclSpec &DS, SkeletonStmt * Body){
-	// This should never be called if Body is nullptr
+ExposedSkeletonDecl *Sema::ActOnExposedSkeleton(Scope *S, DeclSpec &DS, SkeletonStmt * Body){
 	
 	DeclContext *DC = CurContext;
 	ASTContext &C = Context;
-	
-	ExposedSkeletonDecl * Decl = ExposedSkeletonDecl::Create(C, DC, Body->getLocStart(), Body->getHeader()->getName(), Body);
+	ExposedSkeletonDecl * Decl =
+	ExposedSkeletonDecl::Create(C, DC,
+								(Body == nullptr) ? SourceLocation() : Body->getLocStart(),
+								(Body == nullptr) ? nullptr : Body->getHeader()->getName(), Body);
 	DC->addDecl(Decl);
 	return Decl;
 }
@@ -5589,17 +5590,19 @@ static bool shouldConsiderLinkage(const VarDecl *VD) {
     return VD->hasExternalStorage();
   if (DC->isFileContext())
     return true;
-  if (DC->isRecord())
+  if (DC->isRecord() || (DC->getDeclKind() == Decl::ExposedSkeleton))
     return false;
   llvm_unreachable("Unexpected context");
 }
 
 static bool shouldConsiderLinkage(const FunctionDecl *FD) {
   const DeclContext *DC = FD->getDeclContext()->getRedeclContext();
-  if (DC->isFileContext() || DC->isFunctionOrMethod())
-    return true;
-  if (DC->isRecord())
-    return false;
+	if (DC->isFileContext() || DC->isFunctionOrMethod()){
+	return true;
+	} else	if (DC->isRecord() || (DC->getDeclKind() == Decl::ExposedSkeleton)){
+		return false;
+	}
+	Decl::Kind dk = DC->getDeclKind();
   llvm_unreachable("Unexpected context");
 }
 

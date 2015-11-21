@@ -1531,7 +1531,7 @@ void StmtPrinter::VisitImplicitCastExpr(ImplicitCastExpr *Node) {
 }
 
 void StmtPrinter::VisitBinaryOperator(BinaryOperator *Node) {
-	const char * opcode = BinaryOperator::getOpcodeStr(Node->getOpcode()).data();
+	const char * opcode = BinaryOperator::getOpcodeStr(Node->getOpcode(), SExp()).data();
 	OS << SExpL() << SExpCh(opcode,"") << SExpCh(" ","");
   PrintExpr(Node->getLHS());
   OS << " ";

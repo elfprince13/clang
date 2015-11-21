@@ -1819,7 +1819,7 @@ CStyleCastExpr *CStyleCastExpr::CreateEmpty(const ASTContext &C,
 
 /// getOpcodeStr - Turn an Opcode enum value into the punctuation char it
 /// corresponds to, e.g. "<<=".
-StringRef BinaryOperator::getOpcodeStr(Opcode Op) {
+StringRef BinaryOperator::getOpcodeStr(Opcode Op, bool sexp) {
   switch (Op) {
   case BO_PtrMemD:   return ".*";
   case BO_PtrMemI:   return "->*";
@@ -1838,9 +1838,9 @@ StringRef BinaryOperator::getOpcodeStr(Opcode Op) {
   case BO_NE:        return "!=";
   case BO_And:       return "&";
   case BO_Xor:       return "^";
-  case BO_Or:        return "|";
+  case BO_Or:        return sexp? "\\|" : "|";
   case BO_LAnd:      return "&&";
-  case BO_LOr:       return "||";
+	  case BO_LOr:       return sexp? "\\|\\|" : "||";
   case BO_Assign:    return "=";
   case BO_MulAssign: return "*=";
   case BO_DivAssign: return "/=";
@@ -1851,7 +1851,7 @@ StringRef BinaryOperator::getOpcodeStr(Opcode Op) {
   case BO_ShrAssign: return ">>=";
   case BO_AndAssign: return "&=";
   case BO_XorAssign: return "^=";
-  case BO_OrAssign:  return "|=";
+	  case BO_OrAssign:  return sexp? "\\|=" : "|=";
   case BO_Comma:     return ",";
   }
 
