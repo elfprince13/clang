@@ -1309,7 +1309,20 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
       
   case tok::at: {
     SourceLocation AtLoc = ConsumeToken();
-    return ParseObjCAtExpression(AtLoc);
+	  {
+		  LangOptions lo = getLangOpts();
+		  ExprResult ret = ExprError();
+		  if (lo.ObjC1 || lo.ObjC2) {
+			  ret = ParseObjCAtExpression(AtLoc);
+		  } else if (lo.Skeletons) {
+			  ret = ParseSkeletonExpr(AtLoc);
+		  } else {
+			  Diag(Tok, diag::err_unexpected_at);
+		  }
+		  return ret;
+	  }
+	  assert(false && "Unreachable");
+	  break;
   }
   case tok::caret:
     Res = ParseBlockLiteralExpression();

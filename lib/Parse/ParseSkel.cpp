@@ -110,13 +110,13 @@ ExprResult Parser::ParseSkeletonExpr(SourceLocation AtLoc){
 			}
 			
 			T.consumeClose();
-			EndLoc = PrevTokLocation;
 			if(!ret.isInvalid()) {
 				params.push_back(argHere);
 			} else {
 				break;
 			}
 		}
+		EndLoc = PrevTokLocation;
 		
 		if (!ret.isInvalid()){
 			ret = Actions.ActOnSkeletonExpr(AtLoc, SkelLoc, EndLoc, ii, is, params);

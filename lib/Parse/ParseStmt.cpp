@@ -174,7 +174,8 @@ Retry:
 			}
 			return ret;
 		}
-      return ParseObjCAtStatement(AtLoc);
+		assert(false && "Unreachable");
+		break;
     }
 
   case tok::code_completion:
