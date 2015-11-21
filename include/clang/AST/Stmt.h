@@ -1142,7 +1142,6 @@ private:
 	enum { HEADER, BODY, END_EXPR };
 	Stmt* SubExprs[END_EXPR];
 	
-	Stmt *body;
 public:
 	
 	/// \brief Build an empty skeleton statement.
@@ -1152,7 +1151,7 @@ public:
 		setHeader(nullptr);
 	}
 	
-	SkeletonStmt(SkeletonExpr *header, Stmt *Body) :
+	SkeletonStmt(SkeletonExpr *header, Stmt *body) :
 	Stmt(SkeletonStmtClass) {
 		setBody(body);
 		setHeader(header);
@@ -1164,7 +1163,9 @@ public:
 	
 	Stmt *getBody() { return SubExprs[BODY]; }
 	const Stmt *getBody() const { return SubExprs[BODY]; }
-	void setBody(Stmt *S){ SubExprs[BODY] = S; }
+	void setBody(Stmt *S){
+		SubExprs[BODY] = S;
+	}
 
 	SkeletonExpr *getHeader() { return reinterpret_cast<SkeletonExpr*>(SubExprs[HEADER]); }
 	const SkeletonExpr *getHeader() const { return reinterpret_cast<SkeletonExpr*>(SubExprs[HEADER]); }
