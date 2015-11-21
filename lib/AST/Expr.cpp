@@ -450,8 +450,8 @@ SkeletonExpr::SkeletonExpr(const ASTContext &C,
 						   SourceLocation atLoc, SourceLocation skelLoc, SourceLocation endLoc,
 						   IdentifierInfo *skelName, IdentifierInfo *blockName,
 						   ArrayRef<SkeletonArg> params)
-: Expr(SkeletonExprClass, C.UnknownAnyTy, VK_LValue, OK_Ordinary, true, true,
-	   true, false), AtLoc(atLoc), SkelLoc(skelLoc), EndLoc(endLoc), kind(skelName), name(blockName){
+: Expr(SkeletonExprClass, C.UnknownAnyTy, VK_LValue, OK_Ordinary, true, false,
+	   false, false), AtLoc(atLoc), SkelLoc(skelLoc), EndLoc(endLoc), kind(skelName), name(blockName){
 	
 	numParams = params.size();
 	if (numParams) {

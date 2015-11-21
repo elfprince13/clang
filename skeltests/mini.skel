@@ -17,9 +17,10 @@ template<> void unroll<0>(char a) {
 
 int main(int argc, char **argv) {
   int ret;
+      const int i = reinterpret_cast<int>(@I(test_iterator));
   if ((argc % 4) == 0) {
     @Loop1d(test_loop)[@I][= 0][= argc] {
-      const int i = (int) @I(test_iterator);
+      const int i = reinterpret_cast<int>(@I(test_iterator));
       if (strlen(*(argv + i)) > 0)
         (*(argv + i))++;
       puts(*(argv + i));
