@@ -1176,6 +1176,54 @@ public:
   friend class ASTStmtReader;
   friend class ASTStmtWriter;
 };
+	
+	class SkeletonExpr : public Expr {
+	private:
+		SourceLocation AtLoc;
+		SourceLocation SkelLoc;
+		SourceLocation EndLoc;
+		IdentifierInfo *kind;
+		IdentifierInfo *name;
+		
+		size_t numParams;
+		
+		SkeletonArg *Params;
+	public:
+		explicit SkeletonExpr(EmptyShell Empty) :
+		Expr(SkeletonExprClass, Empty), kind(nullptr), name(nullptr),
+		numParams(0), Params(nullptr) { }
+		
+		SkeletonExpr(const ASTContext &C, SourceLocation atLoc, SourceLocation skelLoc, SourceLocation EndLoc, IdentifierInfo *skelName, IdentifierInfo *blockName,
+					 ArrayRef<SkeletonArg> params);
+		
+		
+		void setKind(IdentifierInfo *k){ kind = k; }
+		void setName(IdentifierInfo *n){ kind = name; }
+		
+		IdentifierInfo* getKind(){ return kind; }
+		IdentifierInfo* getName(){ return name; }
+		
+		const IdentifierInfo* getKind() const { return kind; }
+		const IdentifierInfo* getName() const { return name; }
+		
+		int getNumParams(){ return numParams; }
+		const SkeletonArg * getParams() const { return Params; }
+		
+		void setParams(const ASTContext &C, SkeletonArg *Params, size_t NumParams);
+		
+		void setAtLoc(SourceLocation al){ AtLoc = al; }
+		void setSkelLoc(SourceLocation sl){ SkelLoc = sl; }
+		void setEndLoc(SourceLocation el){ EndLoc = el; }
+		
+		SourceLocation getAtLoc() const LLVM_READONLY { return AtLoc; }
+		SourceLocation getSkelLoc() const LLVM_READONLY { return SkelLoc; }
+		SourceLocation getLocStart() const LLVM_READONLY { return getAtLoc(); }
+		SourceLocation getLocEnd() const LLVM_READONLY { return EndLoc; }
+		
+		child_range children() {
+			return child_range(child_iterator(), child_iterator());
+		}
+	};
 
 /// \brief [C99 6.4.2.2] - A predefined identifier such as __func__.
 class PredefinedExpr : public Expr {

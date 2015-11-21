@@ -237,42 +237,11 @@ void ASTStmtReader::VisitDoStmt(DoStmt *S) {
 void ASTStmtReader::VisitSkeletonStmt(SkeletonStmt *S){
 	VisitStmt(S);
 	
-	SmallVector<SkeletonStmt::SkeletonArg, 16> Params;
-	SmallVector<IdentifierInfo *, 16> ParamNames;
-	
-	S->setKind(Reader.GetIdentifierInfo(F, Record, Idx));
-	S->setName(Reader.GetIdentifierInfo(F, Record, Idx));
-	
-	
-	size_t NumParams = Record[Idx++];
-	for(size_t i = 0; i < NumParams; i++){
-		SkeletonStmt::SkeletonArg ArgHere;
-		ArgHere.type = (SkeletonArgType)(Record[Idx++]); // We pushed it back like one, so it is.
-		switch (ArgHere.type) {
-			case ARG_IS_IDENT:
-				ArgHere.data.ident = Reader.GetIdentifierInfo(F, Record, Idx);
-				break;
-			case ARG_IS_EXPR:
-				ArgHere.data.expr = Reader.ReadSubExpr();
-				break;
-			case ARG_IS_STMT:
-				ArgHere.data.stmt = Reader.ReadSubStmt();
-				break;
-			default:
-				assert(false);
-		}
-		Params.push_back(ArgHere);
-	}
+	SkeletonExpr *Header = cast_or_null<SkeletonExpr>(Reader.ReadSubExpr());
+	S->setHeader(Header);
 	
 	Stmt *Body = Reader.ReadSubStmt();
-	
-	
-	S->setParams(Reader.getContext(), Params.data(), NumParams);
 	S->setBody(Body);
-	
-	S->setAtLoc(ReadSourceLocation(Record, Idx));
-	S->setSkelLoc(ReadSourceLocation(Record, Idx));
-	
 	
 }
 
@@ -480,6 +449,41 @@ void ASTStmtReader::VisitExpr(Expr *E) {
   E->setValueKind(static_cast<ExprValueKind>(Record[Idx++]));
   E->setObjectKind(static_cast<ExprObjectKind>(Record[Idx++]));
   assert(Idx == NumExprFields && "Incorrect expression field count");
+}
+
+void ASTStmtReader::VisitSkeletonExpr(SkeletonExpr *E){
+	VisitExpr(E);
+	SmallVector<SkeletonArg, 16> Params;
+	SmallVector<IdentifierInfo *, 16> ParamNames;
+	
+	E->setKind(Reader.GetIdentifierInfo(F, Record, Idx));
+	E->setName(Reader.GetIdentifierInfo(F, Record, Idx));
+	
+	
+	size_t NumParams = Record[Idx++];
+	for(size_t i = 0; i < NumParams; i++){
+		SkeletonArg ArgHere;
+		ArgHere.type = (SkeletonArgType)(Record[Idx++]); // We pushed it back like one, so it is.
+		switch (ArgHere.type) {
+			case ARG_IS_IDENT:
+				ArgHere.data.ident = Reader.GetIdentifierInfo(F, Record, Idx);
+				break;
+			case ARG_IS_EXPR:
+				ArgHere.data.expr = Reader.ReadSubExpr();
+				break;
+			case ARG_IS_STMT:
+				ArgHere.data.stmt = Reader.ReadSubStmt();
+				break;
+			default:
+				assert(false);
+		}
+		Params.push_back(ArgHere);
+	}
+	E->setParams(Reader.getContext(), Params.data(), NumParams);
+	
+	E->setAtLoc(ReadSourceLocation(Record, Idx));
+	E->setSkelLoc(ReadSourceLocation(Record, Idx));
+	E->setEndLoc(ReadSourceLocation(Record, Idx));
 }
 
 void ASTStmtReader::VisitPredefinedExpr(PredefinedExpr *E) {
@@ -2585,6 +2589,10 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
       S = CapturedStmt::CreateDeserialized(Context,
                                            Record[ASTStmtReader::NumStmtFields]);
       break;
+			
+		case EXPR_SKELETON:
+			S = new (Context) SkeletonExpr(Empty);
+			break;
 
     case EXPR_PREDEFINED:
       S = new (Context) PredefinedExpr(Empty);

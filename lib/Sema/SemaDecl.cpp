@@ -3562,7 +3562,7 @@ Decl *Sema::ActOnExposedSkeleton(Scope *S, DeclSpec &DS, SkeletonStmt * Body){
 	DeclContext *DC = CurContext;
 	ASTContext &C = Context;
 	
-	ExposedSkeletonDecl * Decl = ExposedSkeletonDecl::Create(C, DC, Body->getLocStart(), Body->getName(), Body);
+	ExposedSkeletonDecl * Decl = ExposedSkeletonDecl::Create(C, DC, Body->getLocStart(), Body->getHeader()->getName(), Body);
 	DC->addDecl(Decl);
 	return Decl;
 }

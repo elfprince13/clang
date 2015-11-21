@@ -1458,7 +1458,8 @@ namespace clang {
       EXPR_LAMBDA,                 // LambdaExpr
 		
 		// Skeletons
-		STMT_SKELETON
+		STMT_SKELETON,
+		EXPR_SKELETON
 		
     };
 

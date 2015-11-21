@@ -1604,10 +1604,8 @@ void Sema::CheckBreakContinueBinding(Expr *E) {
   }
 }
 
-StmtResult Sema::ActOnSkeletonStmt(SourceLocation AtLoc, SourceLocation SkelLoc,
-								   IdentifierInfo *skelName, IdentifierInfo *blockName,
-								   SmallVector<SkeletonStmt::SkeletonArg, 16> params, Stmt *Body) {
-	SkeletonStmt *builtStmt = new (Context) SkeletonStmt(Context, AtLoc, SkelLoc, skelName, blockName, params, Body);
+StmtResult Sema::ActOnSkeletonStmt(SkeletonExpr *Header, Stmt *Body) {
+	SkeletonStmt *builtStmt = new (Context) SkeletonStmt(Header, Body);
 	return builtStmt;
 }
 

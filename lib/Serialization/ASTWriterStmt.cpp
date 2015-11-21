@@ -163,32 +163,9 @@ void ASTStmtWriter::VisitDoStmt(DoStmt *S) {
 void ASTStmtWriter::VisitSkeletonStmt(SkeletonStmt *S){
 	VisitStmt(S);
 	
-	Writer.AddIdentifierRef(S->getKind(), Record);
-	Writer.AddIdentifierRef(S->getName(), Record);
-	size_t n = S->getNumParams();
-	Record.push_back(n);
-	for(size_t i = 0; i < n; i++){
-		SkeletonStmt::SkeletonArg Param = S->getParams()[i];
-		Record.push_back(Param.type);
-		switch (Param.type) {
-			case ARG_IS_IDENT:
-				Writer.AddIdentifierRef(Param.data.ident, Record);
-				break;
-			case ARG_IS_EXPR:
-				Writer.AddStmt(Param.data.expr);
-				break;
-			case ARG_IS_STMT:
-				Writer.AddStmt(Param.data.stmt);
-				break;
-			default:
-				assert(false);
-		}
-	}
+	Writer.AddStmt(S->getHeader());
 	Writer.AddStmt(S->getBody());
-	
-	
-	Writer.AddSourceLocation(S->getAtLoc(), Record);
-	Writer.AddSourceLocation(S->getSkelLoc(), Record);
+
 	Code = serialization::STMT_SKELETON;
 }
 
@@ -379,6 +356,35 @@ void ASTStmtWriter::VisitExpr(Expr *E) {
   Record.push_back(E->containsUnexpandedParameterPack());
   Record.push_back(E->getValueKind());
   Record.push_back(E->getObjectKind());
+}
+
+void ASTStmtWriter::VisitSkeletonExpr(clang::SkeletonExpr *E){
+	VisitExpr(E);
+	Writer.AddIdentifierRef(E->getKind(), Record);
+	Writer.AddIdentifierRef(E->getName(), Record);
+	size_t n = E->getNumParams();
+	Record.push_back(n);
+	for(size_t i = 0; i < n; i++){
+		SkeletonArg Param = E->getParams()[i];
+		Record.push_back(Param.type);
+		switch (Param.type) {
+			case ARG_IS_IDENT:
+				Writer.AddIdentifierRef(Param.data.ident, Record);
+				break;
+			case ARG_IS_EXPR:
+				Writer.AddStmt(Param.data.expr);
+				break;
+			case ARG_IS_STMT:
+				Writer.AddStmt(Param.data.stmt);
+				break;
+			default:
+				assert(false);
+		}
+	}
+	Writer.AddSourceLocation(E->getAtLoc(), Record);
+	Writer.AddSourceLocation(E->getSkelLoc(), Record);
+	Writer.AddSourceLocation(E->getLocEnd(), Record);
+	Code = serialization::EXPR_SKELETON;
 }
 
 void ASTStmtWriter::VisitPredefinedExpr(PredefinedExpr *E) {

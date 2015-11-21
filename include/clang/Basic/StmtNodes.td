@@ -55,6 +55,7 @@ def CoreturnStmt : Stmt;
 
 // Expressions
 def Expr : Stmt<1>;
+def SkeletonExpr : DStmt<Expr>;
 def PredefinedExpr : DStmt<Expr>;
 def DeclRefExpr : DStmt<Expr>;
 def IntegerLiteral : DStmt<Expr>;

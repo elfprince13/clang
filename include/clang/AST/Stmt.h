@@ -40,6 +40,7 @@ namespace clang {
   class CapturedDecl;
   class Decl;
   class Expr;
+	class SkeletonExpr;
   class IdentifierInfo;
   class LabelDecl;
   class ParmVarDecl;
@@ -1124,73 +1125,62 @@ public:
   }
 };
 
+typedef struct{
+	SkeletonArgType type;
+	union SkeletonArgData {
+		Stmt* stmt;
+		Expr* expr;
+		IdentifierInfo* ident;
+	};
+	SkeletonArgData data;
+} SkeletonArg;
+
 class SkeletonStmt : public Stmt {
 public:
-	typedef struct{
-		SkeletonArgType type;
-		union SkeletonArgData {
-			Stmt* stmt;
-			Expr* expr;
-			IdentifierInfo* ident;
-		};
-		SkeletonArgData data;
-	} SkeletonArg;
+	
 private:
-	SourceLocation AtLoc;
-	SourceLocation SkelLoc;
-	IdentifierInfo *kind;
-	IdentifierInfo *name;
-	
-	size_t numParams;
-	
-	SkeletonArg *Params;
+	enum { HEADER, BODY, END_EXPR };
+	Stmt* SubExprs[END_EXPR];
 	
 	Stmt *body;
 public:
 	
 	/// \brief Build an empty skeleton statement.
 	explicit SkeletonStmt(EmptyShell Empty) :
-	Stmt(SkeletonStmtClass, Empty), kind(nullptr), name(nullptr),
-	numParams(0), Params(nullptr), 	body(nullptr) { }
+	Stmt(SkeletonStmtClass, Empty) {
+		setBody(nullptr);
+		setHeader(nullptr);
+	}
 	
-	SkeletonStmt(const ASTContext &C, SourceLocation atLoc, SourceLocation skelLoc, IdentifierInfo *skelName, IdentifierInfo *blockName,
-				 ArrayRef<SkeletonArg> params, Stmt *Body);
+	SkeletonStmt(SkeletonExpr *header, Stmt *Body) :
+	Stmt(SkeletonStmtClass) {
+		setBody(body);
+		setHeader(header);
+	}
 	
 	static bool classof(const Stmt *T) {
 		return T->getStmtClass() == SkeletonStmtClass;
 	}
 	
-	Stmt *getBody() { return body; }
-	const Stmt *getBody() const { return body; }
-	void setBody(Stmt *S){ body = S; }
+	Stmt *getBody() { return SubExprs[BODY]; }
+	const Stmt *getBody() const { return SubExprs[BODY]; }
+	void setBody(Stmt *S){ SubExprs[BODY] = S; }
+
+	SkeletonExpr *getHeader() { return reinterpret_cast<SkeletonExpr*>(SubExprs[HEADER]); }
+	const SkeletonExpr *getHeader() const { return reinterpret_cast<SkeletonExpr*>(SubExprs[HEADER]); }
+	void setHeader(SkeletonExpr *S){ SubExprs[HEADER] = reinterpret_cast<Stmt*>(S); }
 	
-	void setKind(IdentifierInfo *k){ kind = k; }
-	void setName(IdentifierInfo *n){ kind = name; }
-	
-	IdentifierInfo* getKind(){ return kind; }
-	IdentifierInfo* getName(){ return name; }
-	
-	const IdentifierInfo* getKind() const { return kind; }
-	const IdentifierInfo* getName() const { return name; }
-	
-	int getNumParams(){ return numParams; }
-	const SkeletonArg * getParams() const { return Params; }
-	
-	void setParams(const ASTContext &C, SkeletonArg *Params, size_t NumParams);
-	
-	void setAtLoc(SourceLocation al){ AtLoc = al; }
-	void setSkelLoc(SourceLocation sl){ SkelLoc = sl; }
-	
-	SourceLocation getAtLoc() const LLVM_READONLY { return AtLoc; }
-	SourceLocation getSkelLoc() const LLVM_READONLY { return SkelLoc; }
-	SourceLocation getLocStart() const LLVM_READONLY { return getAtLoc(); }
+	SourceLocation getLocStart() const LLVM_READONLY {
+		assert(SubExprs[HEADER] != nullptr && "getLocStart");
+		return SubExprs[HEADER]->getLocStart();
+	}
 	SourceLocation getLocEnd() const LLVM_READONLY {
-		assert(body != nullptr && "getLocEnd");
-		return body->getLocEnd();
+		assert(SubExprs[BODY] != nullptr && "getLocEnd");
+		return SubExprs[BODY]->getLocEnd();
 	}
 	
 	child_range children() {
-		return child_range(&body, &body+1);
+		return child_range(&SubExprs[0], &SubExprs[0]+END_EXPR);
 	}
 };
 

@@ -70,6 +70,7 @@ namespace  {
 	  inline const char * SExpL(const char * alt = ""){ return SExpCh("(",alt); }
 	  inline const char * SExpR(const char * alt = ""){ return SExpCh(")",alt); }
 	  
+	  void SkeletonHelper(SkeletonExpr* Header);
 	 void JumpStmtHelper(const char** OutTexts, int TextCount, Expr* OutExpr) ;
 	  void AsmIOHelper(GCCAsmStmt *Node, unsigned int (GCCAsmStmt::*NumIO)() const, StringRef (GCCAsmStmt::*IthName)(unsigned int) const, StringLiteral * (GCCAsmStmt::*IthConstraintLiteral)(unsigned int), Expr* (GCCAsmStmt::*IthExpr)(unsigned int));
 
@@ -285,8 +286,9 @@ void StmtPrinter::VisitDoStmt(DoStmt *Node) {
   OS << ")" << SExpCh("", ";") << "\n";
 }
 
-void StmtPrinter::VisitSkeletonStmt(SkeletonStmt *Node) {
-		Indent() << SExpL() << "@" << SExpCh(" ","");
+
+void StmtPrinter::SkeletonHelper(SkeletonExpr* Node){
+	OS << "@" << SExpCh(" ","");
 	OS << Node->getKind()->getName() << SExpCh(" ","");
 	OS << SExpL();
  if (Node->getName() != nullptr){
@@ -295,7 +297,7 @@ void StmtPrinter::VisitSkeletonStmt(SkeletonStmt *Node) {
 	OS << SExpR();
 	OS << SExpCh(" ","") << SExpL() << "\n";
 	for(size_t i = 0, n = Node->getNumParams(); i < n; i++){
-		SkeletonStmt::SkeletonArg I = Node->getParams()[i];
+		SkeletonArg I = Node->getParams()[i];
 		Indent(2) << "[";
 		switch (I.type) {
 			case ARG_IS_EXPR:
@@ -315,12 +317,23 @@ void StmtPrinter::VisitSkeletonStmt(SkeletonStmt *Node) {
 				assert(false);
 				break;
 		}
-
+		
 		OS << "]\n";
 	}
 	if(SExp()){
 		Indent(1) << ")\n";
 	}
+}
+
+void StmtPrinter::VisitSkeletonExpr(clang::SkeletonExpr *Node){
+	OS << SExpL();
+	SkeletonHelper(Node);
+	OS << SExpR();
+}
+
+void StmtPrinter::VisitSkeletonStmt(SkeletonStmt *Node) {
+	Indent() << SExpL() ;
+	SkeletonHelper(Node->getHeader());
 	PrintStmt(Node->getBody());
 	Indent() << SExpR() << "\n";
 }

@@ -3307,9 +3307,8 @@ public:
                                  SourceLocation CondLParen, Expr *Cond,
                                  SourceLocation CondRParen);
 	
-	StmtResult ActOnSkeletonStmt(SourceLocation AtLoc, SourceLocation SkelLoc,
-									   IdentifierInfo *skelName, IdentifierInfo *blockName,
-								 SmallVector<SkeletonStmt::SkeletonArg, 16> params,	 Stmt *Body);
+	
+	StmtResult ActOnSkeletonStmt(SkeletonExpr * Header,	 Stmt *Body);
 	
   StmtResult ActOnForStmt(SourceLocation ForLoc,
                           SourceLocation LParenLoc,
@@ -3742,6 +3741,11 @@ public:
   ExprResult BuildPredefinedExpr(SourceLocation Loc,
                                  PredefinedExpr::IdentType IT);
   ExprResult ActOnPredefinedExpr(SourceLocation Loc, tok::TokenKind Kind);
+		
+		ExprResult ActOnSkeletonExpr(SourceLocation AtLoc, SourceLocation SkelLoc, SourceLocation EndLoc,
+									 IdentifierInfo *skelName, IdentifierInfo *blockName,
+									 SmallVector<SkeletonArg, 16> params);
+		
   ExprResult ActOnIntegerConstant(SourceLocation Loc, uint64_t Val);
 
   bool CheckLoopHintExpr(Expr *E, SourceLocation Loc);

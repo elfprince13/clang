@@ -492,6 +492,7 @@ namespace  {
     // Exprs
     void VisitExpr(const Expr *Node);
     void VisitCastExpr(const CastExpr *Node);
+			void VisitSkeletonExpr(const SkeletonExpr *Node);
     void VisitDeclRefExpr(const DeclRefExpr *Node);
     void VisitPredefinedExpr(const PredefinedExpr *Node);
     void VisitCharacterLiteral(const CharacterLiteral *Node);
@@ -1694,13 +1695,6 @@ void ASTDumper::VisitGotoStmt(const GotoStmt *Node) {
 
 void ASTDumper::VisitSkeletonStmt(const SkeletonStmt *Node) {
 	VisitStmt(Node);
-	OS << " @" << Node->getKind()->getName() << " ";
-	dumpPointer(Node->getKind());
-	if(Node->getName() != nullptr){
-		OS << " (" << Node->getName()->getName() << ") ";
-		dumpPointer(Node->getName());
-	}
-	
 }
 
 void ASTDumper::VisitCXXCatchStmt(const CXXCatchStmt *Node) {
@@ -1786,6 +1780,16 @@ void ASTDumper::VisitCastExpr(const CastExpr *Node) {
   dumpBasePath(OS, Node);
   OS << ">";
 }
+
+void ASTDumper::VisitSkeletonExpr(const SkeletonExpr *Node){
+	OS << " @" << Node->getKind()->getName() << " ";
+	dumpPointer(Node->getKind());
+	if(Node->getName() != nullptr){
+		OS << " (" << Node->getName()->getName() << ") ";
+		dumpPointer(Node->getName());
+	}
+}
+
 
 void ASTDumper::VisitDeclRefExpr(const DeclRefExpr *Node) {
   VisitExpr(Node);

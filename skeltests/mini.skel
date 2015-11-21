@@ -13,18 +13,13 @@ template<> void unroll<0>(char a) {
 	return;
 }
 
-namespace ns {
-	int i = 5;
-}
-
 @TLD(top_level_def);
 
 int main(int argc, char **argv) {
   int ret;
   if ((argc % 4) == 0) {
     @Loop1d(test_loop)[@I][= 0][= argc] {
-      int i;
-      @I(test_iterator)[= i];
+      const int i = (int) @I(test_iterator);
       if (strlen(*(argv + i)) > 0)
         (*(argv + i))++;
       puts(*(argv + i));

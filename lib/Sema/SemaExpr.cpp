@@ -3037,6 +3037,13 @@ ExprResult Sema::BuildPredefinedExpr(SourceLocation Loc,
   return new (Context) PredefinedExpr(Loc, ResTy, IT, SL);
 }
 
+ExprResult Sema::ActOnSkeletonExpr(SourceLocation AtLoc, SourceLocation SkelLoc, SourceLocation EndLoc,
+								   IdentifierInfo *skelName, IdentifierInfo *blockName,
+								   SmallVector<SkeletonArg, 16> params) {
+	SkeletonExpr *builtExpr = new (Context) SkeletonExpr(Context, AtLoc, EndLoc, SkelLoc, skelName, blockName, params);
+	return builtExpr;
+}
+
 ExprResult Sema::ActOnPredefinedExpr(SourceLocation Loc, tok::TokenKind Kind) {
   PredefinedExpr::IdentType IT;
 

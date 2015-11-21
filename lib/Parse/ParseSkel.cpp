@@ -21,7 +21,7 @@ using namespace clang;
 
 Parser::DeclGroupPtrTy Parser::ParseTopLevelSkeleton(ParsingDeclSpec *DS) {
 	SourceLocation AtLoc = ConsumeToken();
-	StmtResult skelStmt = ParseSkeleton(AtLoc);
+	StmtResult skelStmt = ParseSkeletonStmt(AtLoc);
 	
 	DeclGroupPtrTy ret = DeclGroupPtrTy();
 	if(skelStmt.isUsable()){
@@ -33,17 +33,16 @@ Parser::DeclGroupPtrTy Parser::ParseTopLevelSkeleton(ParsingDeclSpec *DS) {
 	return ret; // ConvertDeclToDeclGroup
 }
 
-
-
-StmtResult Parser::ParseSkeleton(SourceLocation AtLoc){
-	StmtResult ret = StmtResult();
+ExprResult Parser::ParseSkeletonExpr(SourceLocation AtLoc){
+	ExprResult ret = ExprResult();
 	SmallVector<IdentifierInfo*, 16> paramNames;
-	SmallVector<SkeletonStmt::SkeletonArg, 16> params;
+	SmallVector<SkeletonArg, 16> params;
 	IdentifierInfo *is = nullptr;
 	
 	if (Tok.is(tok::identifier)) {
 		IdentifierInfo *ii = Tok.getIdentifierInfo();
 		SourceLocation SkelLoc = ConsumeToken();
+		SourceLocation EndLoc = SkelLoc;
 		if(Tok.is(tok::l_paren)) {
 			// Skeletons may attach a name for their local block of code
 			BalancedDelimiterTracker T(*this, tok::l_paren);
@@ -53,20 +52,18 @@ StmtResult Parser::ParseSkeleton(SourceLocation AtLoc){
 				is = Tok.getIdentifierInfo();
 				ConsumeToken();
 			} else {
-				ret = StmtError(Diag(Tok, diag::err_expected_unqualified_id) << getLangOpts().CPlusPlus);
+				ret = ExprError(Diag(Tok, diag::err_expected_unqualified_id) << getLangOpts().CPlusPlus);
 			}
 			
 			T.consumeClose();
 		}
 		
-		bool C99orCXX = getLangOpts().C99 || getLangOpts().CPlusPlus;
-		ParseScope SkelScope(this, Scope::DeclScope | Scope::ControlScope, C99orCXX);
 		
 		for(size_t argNum = 0; Tok.is(tok::l_square); argNum++){
 			BalancedDelimiterTracker T(*this, tok::l_square);
 			T.consumeOpen();
 			
-			SkeletonStmt::SkeletonArg argHere;
+			SkeletonArg argHere;
 			switch(Tok.getKind()){
 				case tok::at: {
 					ConsumeToken();
@@ -77,7 +74,7 @@ StmtResult Parser::ParseSkeleton(SourceLocation AtLoc){
 						argHere.data.ident = ip;
 						argHere.type = ARG_IS_IDENT;
 					} else {
-						ret = StmtError(Diag(Tok, diag::err_expected_unqualified_id) << getLangOpts().CPlusPlus);
+						ret = ExprError(Diag(Tok, diag::err_expected_unqualified_id) << getLangOpts().CPlusPlus);
 						argHere.type = NO_SUCH_ARG;
 						argHere.data.ident = nullptr; // data is a union type, so they should all be nulled.
 					}
@@ -93,7 +90,7 @@ StmtResult Parser::ParseSkeleton(SourceLocation AtLoc){
 						argHere.data.expr = FullExp.get();
 						argHere.type = ARG_IS_EXPR;
 					} else {
-						ret = StmtError(Diag(er.get()->getLocStart(), diag::err_expected_expression));
+						ret = ExprError(Diag(er.get()->getLocStart(), diag::err_expected_expression));
 						argHere.type = NO_SUCH_ARG;
 						argHere.data.expr = nullptr; // data is a union type, so they should all be nulled.
 					}
@@ -104,15 +101,16 @@ StmtResult Parser::ParseSkeleton(SourceLocation AtLoc){
 						argHere.data.stmt = sr.get();
 						argHere.type = ARG_IS_STMT;
 					} else {
-						ret = StmtError(Diag(sr.get()->getLocStart(), diag::err_expected_statement));
+						ret = ExprError(Diag(sr.get()->getLocStart(), diag::err_expected_statement));
 						argHere.type = NO_SUCH_ARG;
 						argHere.data.stmt = nullptr; // data is a union type, so they should all be nulled.
 					}
-				} 
+				}
 					
 			}
 			
 			T.consumeClose();
+			EndLoc = PrevTokLocation;
 			if(!ret.isInvalid()) {
 				params.push_back(argHere);
 			} else {
@@ -120,19 +118,35 @@ StmtResult Parser::ParseSkeleton(SourceLocation AtLoc){
 			}
 		}
 		
-		StmtResult body = StmtResult();
-		if(!ret.isInvalid()){
-			ParseScope InnerScope(this, Scope::DeclScope, C99orCXX, Tok.is(tok::l_brace));
-			body = ParseStatement();
-			InnerScope.Exit();
-		}
-		SkelScope.Exit();
-		
 		if (!ret.isInvalid()){
-			ret = Actions.ActOnSkeletonStmt(AtLoc, SkelLoc, ii, is, params, body.get());
+			ret = Actions.ActOnSkeletonExpr(AtLoc, SkelLoc, EndLoc, ii, is, params);
 		}
 	} else {
-		ret = StmtError(Diag(Tok, diag::err_unexpected_at));
+		ret = ExprError(Diag(Tok, diag::err_unexpected_at));
 	}
+	return ret;
+}
+
+StmtResult Parser::ParseSkeletonStmt(SourceLocation AtLoc){
+	StmtResult ret = StmtResult();
+	bool C99orCXX = getLangOpts().C99 || getLangOpts().CPlusPlus;
+	ParseScope SkelScope(this, Scope::DeclScope | Scope::ControlScope, C99orCXX);
+	
+	ExprResult header = ParseSkeletonExpr(AtLoc);
+	StmtResult body = StmtResult();
+	if(header.isInvalid()){
+		ParseScope InnerScope(this, Scope::DeclScope, C99orCXX, Tok.is(tok::l_brace));
+		body = ParseStatement();
+		InnerScope.Exit();
+	} else {
+		ret = StmtError(Diag(Tok, diag::err_expected_expression));
+	}
+	
+	SkelScope.Exit();
+	
+	if(!ret.isInvalid()){
+		ret = Actions.ActOnSkeletonStmt((SkeletonExpr*)(header.get()), body.get());
+	}
+	
 	return ret;
 }

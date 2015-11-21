@@ -446,6 +446,39 @@ SourceLocation DeclRefExpr::getLocEnd() const {
   return getNameInfo().getLocEnd();
 }
 
+SkeletonExpr::SkeletonExpr(const ASTContext &C,
+						   SourceLocation atLoc, SourceLocation skelLoc, SourceLocation endLoc,
+						   IdentifierInfo *skelName, IdentifierInfo *blockName,
+						   ArrayRef<SkeletonArg> params)
+: Expr(SkeletonExprClass, C.UnknownAnyTy, VK_LValue, OK_Ordinary, true, true,
+	   true, false), AtLoc(atLoc), SkelLoc(skelLoc), EndLoc(endLoc), kind(skelName), name(blockName){
+	
+	numParams = params.size();
+	if (numParams) {
+		this->Params = new (C) SkeletonArg[numParams];
+		std::copy(params.begin(), params.end(), this->Params);
+	} else {
+		Params = nullptr;
+	}
+}
+
+void SkeletonExpr::setParams(const ASTContext &C,
+							 SkeletonArg *Params,
+							 size_t NumParams) {
+	if (this->Params){
+		C.Deallocate(this->Params);
+	}
+	numParams = NumParams;
+	
+	if(numParams){
+		assert(Params != nullptr);
+		this->Params = new (C) SkeletonArg[numParams];
+		memcpy(this->Params, Params, sizeof(SkeletonArg) * numParams);
+	} else {
+		this->Params = nullptr;
+	}
+}
+
 PredefinedExpr::PredefinedExpr(SourceLocation L, QualType FNTy, IdentType IT,
                                StringLiteral *SL)
     : Expr(PredefinedExprClass, FNTy, VK_LValue, OK_Ordinary,

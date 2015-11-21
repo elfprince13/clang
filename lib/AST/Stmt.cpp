@@ -787,43 +787,6 @@ void IfStmt::setConditionVariable(const ASTContext &C, VarDecl *V) {
                                    VarRange.getEnd());
 }
 
-SkeletonStmt::SkeletonStmt(const ASTContext &C,
-						   SourceLocation atLoc, SourceLocation skelLoc,
-						   IdentifierInfo *skelName, IdentifierInfo *blockName,
-						   ArrayRef<SkeletonArg> params,
-						   Stmt *Body)
-: Stmt(SkeletonStmtClass), AtLoc(atLoc), SkelLoc(skelLoc), kind(skelName), name(blockName){
-	
-	numParams = params.size();
-	if (numParams) {
-		this->Params = new (C) SkeletonArg[numParams];
-		std::copy(params.begin(), params.end(), this->Params);
-	} else {
-		Params = nullptr;
-	}
-	
-	setBody(Body);
-	
-	
-}
-
-void SkeletonStmt::setParams(const ASTContext &C,
-							 SkeletonArg *Params,
-                            size_t NumParams) {
-	if (this->Params){
-		C.Deallocate(this->Params);
-	}
-	numParams = NumParams;
-	
-	if(numParams){
-		assert(Params != nullptr);
-		this->Params = new (C) SkeletonArg[numParams];
-		memcpy(this->Params, Params, sizeof(SkeletonArg) * numParams);
-	} else {
-		this->Params = nullptr;
-	}
-}
-
 ForStmt::ForStmt(const ASTContext &C, Stmt *Init, Expr *Cond, VarDecl *condVar,
                  Expr *Inc, Stmt *Body, SourceLocation FL, SourceLocation LP,
                  SourceLocation RP)

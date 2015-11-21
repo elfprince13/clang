@@ -2267,6 +2267,26 @@ DEF_TRAVERSE_STMT(ObjCBridgedCastExpr, {
 })
 DEF_TRAVERSE_STMT(ParenExpr, {})
 DEF_TRAVERSE_STMT(ParenListExpr, {})
+	
+	DEF_TRAVERSE_STMT(SkeletonExpr, {
+		for(size_t i = 0, n = S->getNumParams(); i < n; i++) {
+			SkeletonArg B = (S->getParams())[i];
+			SkeletonArg Res;
+			Res.type = B.type;
+			switch(B.type){
+				case ARG_IS_IDENT:
+					break;
+				case ARG_IS_EXPR: {
+					TRY_TO(TraverseStmt(B.data.expr));
+				} break;
+				case ARG_IS_STMT: {
+					TRY_TO(TraverseStmt(B.data.stmt));
+				} break;
+				case NO_SUCH_ARG: break;
+			}
+		}
+	})
+	
 DEF_TRAVERSE_STMT(PredefinedExpr, {})
 DEF_TRAVERSE_STMT(ShuffleVectorExpr, {})
 DEF_TRAVERSE_STMT(ConvertVectorExpr, {})

@@ -168,7 +168,7 @@ Retry:
 			if (lo.ObjC1 || lo.ObjC2) {
 				ret = ParseObjCAtStatement(AtLoc);
 			} else if (lo.Skeletons) {
-				ret = ParseSkeleton(AtLoc);
+				ret = ParseSkeletonStmt(AtLoc);
 			} else {
 				Diag(Tok, diag::err_unexpected_at);
 			}

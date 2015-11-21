@@ -589,6 +589,10 @@ void StmtProfiler::VisitDeclRefExpr(const DeclRefExpr *S) {
     VisitTemplateArguments(S->getTemplateArgs(), S->getNumTemplateArgs());
 }
 
+void StmtProfiler::VisitSkeletonExpr(const clang::SkeletonExpr *S){
+	VisitExpr(S);
+}
+
 void StmtProfiler::VisitPredefinedExpr(const PredefinedExpr *S) {
   VisitExpr(S);
   ID.AddInteger(S->getIdentType());

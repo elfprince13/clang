@@ -1214,13 +1214,13 @@ const internal::VariadicDynCastAllOfMatcher<Stmt, SkeletonStmt> skelStmt;
 	
 AST_MATCHER_P(SkeletonStmt, skelOfKind, std::string, KindWanted){
 	assert(!KindWanted.empty());
-	const IdentifierInfo* const SkelKind = Node.getKind();
+	const IdentifierInfo* const SkelKind = Node.getHeader()->getKind();
 	return (SkelKind != nullptr && SkelKind->getName().equals(KindWanted) );
 }
 	
 AST_MATCHER_P(SkeletonStmt, skelHasName, std::string, NameWanted) {
 	assert(!NameWanted.empty());
-	const IdentifierInfo* const SkelName  = Node.getName();
+	const IdentifierInfo* const SkelName  = Node.getHeader()->getName();
 	return (SkelName != nullptr && SkelName->getName().equals(NameWanted));
 }
 
