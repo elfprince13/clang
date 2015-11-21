@@ -134,13 +134,13 @@ StmtResult Parser::ParseSkeletonStmt(SourceLocation AtLoc){
 	
 	ExprResult header = ParseSkeletonExpr(AtLoc);
 	StmtResult body = StmtResult();
-	if(header.isInvalid()){
+	//if(header.isInvalid()){
 		ParseScope InnerScope(this, Scope::DeclScope, C99orCXX, Tok.is(tok::l_brace));
 		body = ParseStatement();
 		InnerScope.Exit();
-	} else {
+	/*} else {
 		ret = StmtError(Diag(Tok, diag::err_expected_expression));
-	}
+	}*/
 	
 	SkelScope.Exit();
 	
