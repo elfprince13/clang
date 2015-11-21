@@ -321,7 +321,7 @@ void StmtPrinter::SkeletonHelper(SkeletonExpr* Node){
 		OS << "]\n";
 	}
 	if(SExp()){
-		Indent(1) << ")\n";
+		Indent(1) << ")";
 	}
 }
 
@@ -334,6 +334,7 @@ void StmtPrinter::VisitSkeletonExpr(clang::SkeletonExpr *Node){
 void StmtPrinter::VisitSkeletonStmt(SkeletonStmt *Node) {
 	Indent() << SExpL() ;
 	SkeletonHelper(Node->getHeader());
+	OS << SExpCh("\n","");
 	PrintStmt(Node->getBody());
 	Indent() << SExpR() << "\n";
 }
