@@ -3742,7 +3742,7 @@ public:
                                  PredefinedExpr::IdentType IT);
   ExprResult ActOnPredefinedExpr(SourceLocation Loc, tok::TokenKind Kind);
 		
-		ExprResult ActOnSkeletonExpr(SourceLocation AtLoc, SourceLocation SkelLoc, SourceLocation EndLoc,
+		SkeletonExpr* ActOnSkeletonExpr(SourceLocation AtLoc, SourceLocation SkelLoc, SourceLocation EndLoc,
 									 IdentifierInfo *skelName, IdentifierInfo *blockName,
 									 SmallVector<SkeletonArg, 16> params);
 		

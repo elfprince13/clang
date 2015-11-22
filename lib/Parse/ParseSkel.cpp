@@ -44,8 +44,9 @@ Parser::DeclGroupPtrTy Parser::ParseTopLevelSkeleton(ParsingDeclSpec *DS) {
 	return ret; // ConvertDeclToDeclGroup
 }
 
-ExprResult Parser::ParseSkeletonExpr(SourceLocation AtLoc){
-	ExprResult ret = ExprResult();
+SkeletonExpr* Parser::ParseSkeletonExpr(SourceLocation AtLoc){
+	SkeletonExpr* ret = nullptr;
+	bool err = false;
 	SmallVector<IdentifierInfo*, 16> paramNames;
 	SmallVector<SkeletonArg, 16> params;
 	IdentifierInfo *is = nullptr;
@@ -63,7 +64,8 @@ ExprResult Parser::ParseSkeletonExpr(SourceLocation AtLoc){
 				is = Tok.getIdentifierInfo();
 				ConsumeToken();
 			} else {
-				ret = ExprError(Diag(Tok, diag::err_expected_unqualified_id) << getLangOpts().CPlusPlus);
+				Diag(Tok, diag::err_expected_unqualified_id) << getLangOpts().CPlusPlus;
+				err = true;
 			}
 			
 			T.consumeClose();
@@ -85,7 +87,8 @@ ExprResult Parser::ParseSkeletonExpr(SourceLocation AtLoc){
 						argHere.data.ident = ip;
 						argHere.type = ARG_IS_IDENT;
 					} else {
-						ret = ExprError(Diag(Tok, diag::err_expected_unqualified_id) << getLangOpts().CPlusPlus);
+						Diag(Tok, diag::err_expected_unqualified_id) << getLangOpts().CPlusPlus;
+						err = true;
 						argHere.type = NO_SUCH_ARG;
 						argHere.data.ident = nullptr; // data is a union type, so they should all be nulled.
 					}
@@ -101,7 +104,8 @@ ExprResult Parser::ParseSkeletonExpr(SourceLocation AtLoc){
 						argHere.data.expr = FullExp.get();
 						argHere.type = ARG_IS_EXPR;
 					} else {
-						ret = ExprError(Diag(er.get()->getLocStart(), diag::err_expected_expression));
+						Diag(er.get()->getLocStart(), diag::err_expected_expression);
+						err = true;
 						argHere.type = NO_SUCH_ARG;
 						argHere.data.expr = nullptr; // data is a union type, so they should all be nulled.
 					}
@@ -112,7 +116,8 @@ ExprResult Parser::ParseSkeletonExpr(SourceLocation AtLoc){
 						argHere.data.stmt = sr.get();
 						argHere.type = ARG_IS_STMT;
 					} else {
-						ret = ExprError(Diag(sr.get()->getLocStart(), diag::err_expected_statement));
+						Diag(sr.get()->getLocStart(), diag::err_expected_statement);
+						err = true;
 						argHere.type = NO_SUCH_ARG;
 						argHere.data.stmt = nullptr; // data is a union type, so they should all be nulled.
 					}
@@ -121,7 +126,7 @@ ExprResult Parser::ParseSkeletonExpr(SourceLocation AtLoc){
 			}
 			
 			T.consumeClose();
-			if(!ret.isInvalid()) {
+			if(!err) {
 				params.push_back(argHere);
 			} else {
 				break;
@@ -129,11 +134,12 @@ ExprResult Parser::ParseSkeletonExpr(SourceLocation AtLoc){
 		}
 		EndLoc = PrevTokLocation;
 		
-		if (!ret.isInvalid()){
+		if (!err){
 			ret = Actions.ActOnSkeletonExpr(AtLoc, SkelLoc, EndLoc, ii, is, params);
 		}
 	} else {
-		ret = ExprError(Diag(Tok, diag::err_unexpected_at));
+		Diag(Tok, diag::err_unexpected_at);
+		err = true;
 	}
 	return ret;
 }
@@ -143,20 +149,20 @@ StmtResult Parser::ParseSkeletonStmt(SourceLocation AtLoc){
 	bool C99orCXX = getLangOpts().C99 || getLangOpts().CPlusPlus;
 	ParseScope SkelScope(this, Scope::DeclScope | Scope::ControlScope, C99orCXX);
 	
-	ExprResult header = ParseSkeletonExpr(AtLoc);
+	SkeletonExpr *header = ParseSkeletonExpr(AtLoc);
 	StmtResult body = StmtResult();
-	//if(header.isInvalid()){
+	if(header != nullptr){
 		ParseScope InnerScope(this, Scope::DeclScope, C99orCXX, Tok.is(tok::l_brace));
 		body = ParseStatement();
 		InnerScope.Exit();
-	/*} else {
+	} else {
 		ret = StmtError(Diag(Tok, diag::err_expected_expression));
-	}*/
+	}
 	
 	SkelScope.Exit();
 	
 	if(!ret.isInvalid()){
-		ret = Actions.ActOnSkeletonStmt((SkeletonExpr*)(header.get()), body.get());
+		ret = Actions.ActOnSkeletonStmt(header, body.get());
 	}
 	
 	return ret;
