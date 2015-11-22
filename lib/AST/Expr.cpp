@@ -1852,7 +1852,7 @@ StringRef BinaryOperator::getOpcodeStr(Opcode Op, bool sexp) {
   case BO_AndAssign: return "&=";
   case BO_XorAssign: return "^=";
 	  case BO_OrAssign:  return sexp? "\\|=" : "|=";
-  case BO_Comma:     return ",";
+	  case BO_Comma:     return sexp? "|,|" : ",";
   }
 
   llvm_unreachable("Invalid OpCode!");

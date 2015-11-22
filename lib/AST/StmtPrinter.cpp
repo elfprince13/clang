@@ -71,6 +71,9 @@ namespace  {
 	  inline const char * SExpR(const char * alt = ""){ return SExpCh(")",alt); }
 	  
 	  void SkeletonHelper(SkeletonExpr* Header);
+	  const char * MemberHelper(bool arrow) {
+		  return arrow ? "->" : SExpCh("|.|", ".");
+	  }
 	 void JumpStmtHelper(const char** OutTexts, int TextCount, Expr* OutExpr) ;
 	  void AsmIOHelper(GCCAsmStmt *Node, unsigned int (GCCAsmStmt::*NumIO)() const, StringRef (GCCAsmStmt::*IthName)(unsigned int) const, StringLiteral * (GCCAsmStmt::*IthConstraintLiteral)(unsigned int), Expr* (GCCAsmStmt::*IthExpr)(unsigned int));
 
@@ -1147,7 +1150,7 @@ void StmtPrinter::VisitUnresolvedLookupExpr(UnresolvedLookupExpr *Node) {
 void StmtPrinter::VisitObjCIvarRefExpr(ObjCIvarRefExpr *Node) {
   if (Node->getBase()) {
     PrintExpr(Node->getBase());
-    OS << (Node->isArrow() ? "->" : ".");
+    OS << MemberHelper(Node->isArrow());
   }
   OS << *Node->getDecl();
 }
@@ -1472,14 +1475,14 @@ void StmtPrinter::VisitMemberExpr(MemberExpr *Node) {
 
 	if (Policy.UseSExp &&
 		(!ParentDecl || !ParentDecl->isAnonymousStructOrUnion())){
-		OS << (Node->isArrow() ? "->" : ".") << " ";
+		OS << MemberHelper(Node->isArrow()) << " ";
 	}
 	
 	PrintExpr(Node->getBase());
 	OS << SExpCh(" ", "");
 	
 	if (!Policy.UseSExp && (!ParentDecl || !ParentDecl->isAnonymousStructOrUnion())){
-		OS << (Node->isArrow() ? "->" : ".");
+		OS << MemberHelper(Node->isArrow());
 	}
 
 	if (FieldDecl *FD = dyn_cast<FieldDecl>(Node->getMemberDecl())) {
@@ -1504,7 +1507,7 @@ void StmtPrinter::VisitMemberExpr(MemberExpr *Node) {
 }
 void StmtPrinter::VisitObjCIsaExpr(ObjCIsaExpr *Node) {
   PrintExpr(Node->getBase());
-  OS << (Node->isArrow() ? "->isa" : ".isa");
+  OS << MemberHelper(Node->isArrow()) << "isa";
 }
 
 void StmtPrinter::VisitExtVectorElementExpr(ExtVectorElementExpr *Node) {
@@ -1863,10 +1866,7 @@ void StmtPrinter::VisitCXXUuidofExpr(CXXUuidofExpr *Node) {
 
 void StmtPrinter::VisitMSPropertyRefExpr(MSPropertyRefExpr *Node) {
   PrintExpr(Node->getBaseExpr());
-  if (Node->isArrow())
-    OS << "->";
-  else
-    OS << ".";
+	OS << MemberHelper(Node->isArrow());
   if (NestedNameSpecifier *Qualifier =
       Node->getQualifierLoc().getNestedNameSpecifier())
     Qualifier->print(OS, Policy);
@@ -2136,10 +2136,7 @@ void StmtPrinter::VisitCXXDeleteExpr(CXXDeleteExpr *E) {
 
 void StmtPrinter::VisitCXXPseudoDestructorExpr(CXXPseudoDestructorExpr *E) {
   PrintExpr(E->getBase());
-  if (E->isArrow())
-    OS << "->";
-  else
-    OS << '.';
+	OS << MemberHelper(E->isArrow());
   if (E->getQualifier())
     E->getQualifier()->print(OS, Policy);
   OS << "~";
@@ -2196,7 +2193,7 @@ void StmtPrinter::VisitCXXDependentScopeMemberExpr(
                                          CXXDependentScopeMemberExpr *Node) {
   if (!Node->isImplicitAccess()) {
     PrintExpr(Node->getBase());
-    OS << (Node->isArrow() ? "->" : ".");
+    OS << MemberHelper(Node->isArrow());
   }
   if (NestedNameSpecifier *Qualifier = Node->getQualifier())
     Qualifier->print(OS, Policy);
@@ -2211,7 +2208,7 @@ void StmtPrinter::VisitCXXDependentScopeMemberExpr(
 void StmtPrinter::VisitUnresolvedMemberExpr(UnresolvedMemberExpr *Node) {
   if (!Node->isImplicitAccess()) {
     PrintExpr(Node->getBase());
-    OS << (Node->isArrow() ? "->" : ".");
+    OS << MemberHelper(Node->isArrow());
   }
   if (NestedNameSpecifier *Qualifier = Node->getQualifier())
     Qualifier->print(OS, Policy);
