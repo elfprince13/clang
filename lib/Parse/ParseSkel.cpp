@@ -94,7 +94,7 @@ SkeletonExpr* Parser::ParseSkeletonExpr(SourceLocation AtLoc){
 					}
 				} break;
 				case tok::equal: {
-					ConsumeToken();
+					SourceLocation expLoc = ConsumeToken();
 					ExprResult er = ParseExpression();
 					if(er.isUsable()) {
 						FullExprArg FullExp(Actions.MakeFullExpr(er.get(), SkelLoc));
@@ -104,19 +104,20 @@ SkeletonExpr* Parser::ParseSkeletonExpr(SourceLocation AtLoc){
 						argHere.data.expr = FullExp.get();
 						argHere.type = ARG_IS_EXPR;
 					} else {
-						Diag(er.get()->getLocStart(), diag::err_expected_expression);
+						Diag(expLoc, diag::err_expected_expression);
 						err = true;
 						argHere.type = NO_SUCH_ARG;
 						argHere.data.expr = nullptr; // data is a union type, so they should all be nulled.
 					}
 				} break;
 				default: {
+					SourceLocation stmtLoc = Tok.getLocation();
 					StmtResult sr = ParseStatement();
 					if(sr.isUsable()) {
 						argHere.data.stmt = sr.get();
 						argHere.type = ARG_IS_STMT;
 					} else {
-						Diag(sr.get()->getLocStart(), diag::err_expected_statement);
+						Diag(stmtLoc, diag::err_expected_statement);
 						err = true;
 						argHere.type = NO_SUCH_ARG;
 						argHere.data.stmt = nullptr; // data is a union type, so they should all be nulled.
