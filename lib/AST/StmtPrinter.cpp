@@ -1425,10 +1425,11 @@ void StmtPrinter::VisitGenericSelectionExpr(GenericSelectionExpr *Node) {
 }
 
 void StmtPrinter::VisitArraySubscriptExpr(ArraySubscriptExpr *Node) {
+	OS << SExpL() << SExpCh("|[]| ","");
   PrintExpr(Node->getLHS());
-  OS << "[";
+  OS << SExpCh(" ", "[");
   PrintExpr(Node->getRHS());
-  OS << "]";
+  OS << SExpCh(")", "]");
 }
 
 void StmtPrinter::VisitOMPArraySectionExpr(OMPArraySectionExpr *Node) {
