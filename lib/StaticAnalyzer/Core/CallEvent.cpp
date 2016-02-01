@@ -210,6 +210,16 @@ ProgramPoint CallEvent::getProgramPoint(bool IsPreVisit,
   return PostImplicitCall(D, Loc, getLocationContext(), Tag);
 }
 
+bool CallEvent::isCalled(const CallDescription &CD) const {
+  assert(getKind() != CE_ObjCMessage && "Obj-C methods are not supported");
+  if (!CD.II)
+    CD.II = &getState()->getStateManager().getContext().Idents.get(CD.FuncName);
+  if (getCalleeIdentifier() != CD.II)
+    return false;
+  return (CD.RequiredArgs == CallDescription::NoArgRequirement ||
+          CD.RequiredArgs == getNumArgs());
+}
+
 SVal CallEvent::getArgSVal(unsigned Index) const {
   const Expr *ArgE = getArgExpr(Index);
   if (!ArgE)
@@ -598,10 +608,25 @@ void BlockCall::getExtraInvalidatedValues(ValueList &Values,
 
 void BlockCall::getInitialStackFrameContents(const StackFrameContext *CalleeCtx,
                                              BindingsTy &Bindings) const {
-  const BlockDecl *D = cast<BlockDecl>(CalleeCtx->getDecl());
   SValBuilder &SVB = getState()->getStateManager().getSValBuilder();
+  ArrayRef<ParmVarDecl*> Params;
+  if (isConversionFromLambda()) {
+    auto *LambdaOperatorDecl = cast<CXXMethodDecl>(CalleeCtx->getDecl());
+    Params = LambdaOperatorDecl->parameters();
+
+    // For blocks converted from a C++ lambda, the callee declaration is the
+    // operator() method on the lambda so we bind "this" to
+    // the lambda captured by the block.
+    const VarRegion *CapturedLambdaRegion = getRegionStoringCapturedLambda();
+    SVal ThisVal = loc::MemRegionVal(CapturedLambdaRegion);
+    Loc ThisLoc = SVB.getCXXThis(LambdaOperatorDecl, CalleeCtx);
+    Bindings.push_back(std::make_pair(ThisLoc, ThisVal));
+  } else {
+    Params = cast<BlockDecl>(CalleeCtx->getDecl())->parameters();
+  }
+
   addParameterValuesToBindings(CalleeCtx, Bindings, SVB, *this,
-                               D->parameters());
+                               Params);
 }
 
 

@@ -1327,8 +1327,8 @@ CGObjCGNU::GenerateMessageSendSuper(CodeGenFunction &CGF,
   llvm::MDNode *node = llvm::MDNode::get(VMContext, impMD);
 
   llvm::Instruction *call;
-  RValue msgRet = CGF.EmitCall(MSI.CallInfo, imp, Return, ActualArgs, nullptr,
-                               &call);
+  RValue msgRet = CGF.EmitCall(MSI.CallInfo, imp, Return, ActualArgs,
+                               CGCalleeInfo(), &call);
   call->setMetadata(msgSendMDKind, node);
   return msgRet;
 }
@@ -1440,8 +1440,8 @@ CGObjCGNU::GenerateMessageSend(CodeGenFunction &CGF,
   imp = EnforceType(Builder, imp, MSI.MessengerType);
 
   llvm::Instruction *call;
-  RValue msgRet = CGF.EmitCall(MSI.CallInfo, imp, Return, ActualArgs, nullptr,
-                               &call);
+  RValue msgRet = CGF.EmitCall(MSI.CallInfo, imp, Return, ActualArgs,
+                               CGCalleeInfo(), &call);
   call->setMetadata(msgSendMDKind, node);
 
 
@@ -1849,7 +1849,7 @@ void CGObjCGNU::GenerateProtocol(const ObjCProtocolDecl *PD) {
 
   // Add all of the property methods need adding to the method list and to the
   // property metadata list.
-  for (auto *property : PD->properties()) {
+  for (auto *property : PD->instance_properties()) {
     std::vector<llvm::Constant*> Fields;
 
     Fields.push_back(MakePropertyEncodingString(property, nullptr));

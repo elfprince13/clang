@@ -94,6 +94,40 @@ numbers:
     cov.cc:3
     cov.cc:5
 
+Sancov Tool
+===========
+
+A new experimental ``sancov`` tool is developed to process coverage files.
+The tool is part of LLVM project and is currently supported only on Linux.
+It can handle symbolization tasks autonomously without needed any extra 
+support from environment.
+
+.. code-block:: console
+
+    USAGE: sancov [options] <action> <filenames...>
+
+    Action (required)
+      -print                    - Print coverage addresses
+      -covered-functions        - Print all covered funcions.
+      -not-covered-functions    - Print all not covered funcions.
+      -html-report              - Print HTML coverage report.
+
+    Options
+      -blacklist=<string>         - Blacklist file (sanitizer blacklist format).
+      -demangle                   - Print demangled function name.
+      -obj=<string>               - Path to object file to be symbolized
+      -strip_path_prefix=<string> - Strip this prefix from file paths in reports
+
+
+Automatic HTML Report Generation
+================================
+
+If ``*SAN_OPTIONS`` contains ``html_cov_report=1`` option set, then html
+coverage report would be automatically generated alongside the coverage files.
+The ``sancov`` binary should be present in ``PATH`` or
+``sancov_path=<path_to_sancov`` option can be used to specify tool location.
+
+
 How good is the coverage?
 =========================
 
@@ -249,6 +283,13 @@ These counters may also be used for in-process coverage-guided fuzzers. See
     uintptr_t
     __sanitizer_update_counter_bitset_and_clear_counters(uint8_t *bitset);
 
+Tracing basic blocks
+====================
+An *experimental* feature to support basic block (or edge) tracing.
+With ``-fsanitize-coverage=trace-bb`` the compiler will insert
+``__sanitizer_cov_trace_basic_block(s32 *id)`` before every function, basic block, or edge
+(depending on the value of ``-fsanitize-coverage=[func,bb,edge]``).
+
 Tracing data flow
 =================
 
@@ -275,6 +316,7 @@ they will be called by the instrumented code.
   void __sanitizer_cov_trace_switch(uint64_t Val, uint64_t *Cases);
 
 This interface is a subject to change.
+The current implementation is not thread-safe and thus can be safely used only for single-threaded targets.
 
 Output directory
 ================

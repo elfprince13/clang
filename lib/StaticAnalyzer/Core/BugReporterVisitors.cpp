@@ -14,6 +14,7 @@
 #include "clang/StaticAnalyzer/Core/BugReporter/BugReporterVisitor.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprObjC.h"
+#include "clang/Analysis/CFGStmtMap.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/BugReporter.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/PathDiagnostic.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CallEvent.h"
@@ -828,8 +829,53 @@ SuppressInlineDefensiveChecksVisitor::VisitNode(const ExplodedNode *Succ,
     // Check if this is inlined defensive checks.
     const LocationContext *CurLC =Succ->getLocationContext();
     const LocationContext *ReportLC = BR.getErrorNode()->getLocationContext();
-    if (CurLC != ReportLC && !CurLC->isParentOf(ReportLC))
+    if (CurLC != ReportLC && !CurLC->isParentOf(ReportLC)) {
       BR.markInvalid("Suppress IDC", CurLC);
+      return nullptr;
+    }
+
+    // Treat defensive checks in function-like macros as if they were an inlined
+    // defensive check. If the bug location is not in a macro and the
+    // terminator for the current location is in a macro then suppress the
+    // warning.
+    auto BugPoint = BR.getErrorNode()->getLocation().getAs<StmtPoint>();
+
+    if (!BugPoint)
+      return nullptr;
+
+    SourceLocation BugLoc = BugPoint->getStmt()->getLocStart();
+    if (BugLoc.isMacroID())
+      return nullptr;
+
+    ProgramPoint CurPoint = Succ->getLocation();
+    const Stmt *CurTerminatorStmt = nullptr;
+    if (auto BE = CurPoint.getAs<BlockEdge>()) {
+      CurTerminatorStmt = BE->getSrc()->getTerminator().getStmt();
+    } else if (auto SP = CurPoint.getAs<StmtPoint>()) {
+      const Stmt *CurStmt = SP->getStmt();
+      if (!CurStmt->getLocStart().isMacroID())
+        return nullptr;
+
+      CFGStmtMap *Map = CurLC->getAnalysisDeclContext()->getCFGStmtMap();
+      CurTerminatorStmt = Map->getBlock(CurStmt)->getTerminator();
+    } else {
+      return nullptr;
+    }
+
+    if (!CurTerminatorStmt)
+      return nullptr;
+
+    SourceLocation TerminatorLoc = CurTerminatorStmt->getLocStart();
+    if (TerminatorLoc.isMacroID()) {
+      const SourceManager &SMgr = BRC.getSourceManager();
+      std::pair<FileID, unsigned> TLInfo = SMgr.getDecomposedLoc(TerminatorLoc);
+      SrcMgr::SLocEntry SE = SMgr.getSLocEntry(TLInfo.first);
+      const SrcMgr::ExpansionInfo &EInfo = SE.getExpansion();
+      if (EInfo.isFunctionMacroExpansion()) {
+        BR.markInvalid("Suppress Macro IDC", CurLC);
+        return nullptr;
+      }
+    }
   }
   return nullptr;
 }
@@ -1537,6 +1583,16 @@ LikelyFalsePositiveSuppressionBRVisitor::getEndPath(BugReporterContext &BRC,
       if (const CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(D)) {
         const CXXRecordDecl *CD = MD->getParent();
         if (CD->getName() == "list") {
+          BR.markInvalid(getTag(), nullptr);
+          return nullptr;
+        }
+      }
+
+      // The analyzer issues a false positive when the constructor of
+      // std::__independent_bits_engine from algorithms is used.
+      if (const CXXConstructorDecl *MD = dyn_cast<CXXConstructorDecl>(D)) {
+        const CXXRecordDecl *CD = MD->getParent();
+        if (CD->getName() == "__independent_bits_engine") {
           BR.markInvalid(getTag(), nullptr);
           return nullptr;
         }

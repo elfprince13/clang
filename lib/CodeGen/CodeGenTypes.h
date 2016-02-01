@@ -162,6 +162,8 @@ class CodeGenTypes {
   /// corresponding llvm::Type.
   llvm::DenseMap<const Type *, llvm::Type *> TypeCache;
 
+  llvm::SmallSet<const Type *, 8> RecordsWithOpaqueMemberPointers;
+
 public:
   CodeGenTypes(CodeGenModule &cgm);
   ~CodeGenTypes();
@@ -177,6 +179,14 @@ public:
 
   /// ConvertType - Convert type T into a llvm::Type.
   llvm::Type *ConvertType(QualType T);
+
+  /// \brief Converts the GlobalDecl into an llvm::Type. This should be used
+  /// when we know the target of the function we want to convert.  This is
+  /// because some functions (explicitly, those with pass_object_size
+  /// parameters) may not have the same signature as their type portrays, and
+  /// can only be called directly.
+  llvm::Type *ConvertFunctionType(QualType FT,
+                                  const FunctionDecl *FD = nullptr);
 
   /// ConvertTypeForMem - Convert type T into a llvm::Type.  This differs from
   /// ConvertType in that it is used to convert to the memory representation for
@@ -205,6 +215,10 @@ public:
   /// UpdateCompletedType - When we find the full definition for a TagDecl,
   /// replace the 'opaque' type we previously made for it if applicable.
   void UpdateCompletedType(const TagDecl *TD);
+
+  /// \brief Remove stale types from the type cache when an inheritance model
+  /// gets assigned to a class.
+  void RefreshTypeCacheForClass(const CXXRecordDecl *RD);
 
   /// getNullaryFunctionInfo - Get the function info for a void()
   /// function with standard CC.
@@ -264,11 +278,12 @@ public:
   const CGFunctionInfo &arrangeMSMemberPointerThunk(const CXXMethodDecl *MD);
   const CGFunctionInfo &arrangeMSCtorClosure(const CXXConstructorDecl *CD,
                                                  CXXCtorType CT);
-
-  const CGFunctionInfo &arrangeFreeFunctionType(CanQual<FunctionProtoType> Ty);
+  const CGFunctionInfo &arrangeFreeFunctionType(CanQual<FunctionProtoType> Ty,
+                                                const FunctionDecl *FD);
   const CGFunctionInfo &arrangeFreeFunctionType(CanQual<FunctionNoProtoType> Ty);
   const CGFunctionInfo &arrangeCXXMethodType(const CXXRecordDecl *RD,
-                                             const FunctionProtoType *FTP);
+                                             const FunctionProtoType *FTP,
+                                             const CXXMethodDecl *MD);
 
   /// "Arrange" the LLVM information for a call or type with the given
   /// signature.  This is largely an internal method; other clients

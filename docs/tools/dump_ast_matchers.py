@@ -47,7 +47,7 @@ def esc(text):
       except:
         doxygen_probes[url] = False
     if doxygen_probes[url]:
-      return r'Matcher&lt<a href="%s">%s</a>&gt;' % (url, name)
+      return r'Matcher&lt;<a href="%s">%s</a>&gt;' % (url, name)
     else:
       return m.group(0)
   text = re.sub(
@@ -83,6 +83,11 @@ def strip_doxygen(comment):
   """Returns the given comment without \-escaped words."""
   # If there is only a doxygen keyword in the line, delete the whole line.
   comment = re.sub(r'^\\[^\s]+\n', r'', comment, flags=re.M)
+  
+  # If there is a doxygen \see command, change the \see prefix into "See also:".
+  # FIXME: it would be better to turn this into a link to the target instead.
+  comment = re.sub(r'\\see', r'See also:', comment)
+  
   # Delete the doxygen command and the following whitespace.
   comment = re.sub(r'\\[^\s]+\s+', r'', comment)
   return comment
@@ -364,6 +369,6 @@ reference = re.sub(r'<!-- START_NARROWING_MATCHERS.*END_NARROWING_MATCHERS -->',
 reference = re.sub(r'<!-- START_TRAVERSAL_MATCHERS.*END_TRAVERSAL_MATCHERS -->',
                    '%s', reference, flags=re.S) % traversal_matcher_table
 
-with open('../LibASTMatchersReference.html', 'w') as output:
+with open('../LibASTMatchersReference.html', 'wb') as output:
   output.write(reference)
 

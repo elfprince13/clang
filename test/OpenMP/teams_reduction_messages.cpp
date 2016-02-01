@@ -18,7 +18,7 @@ class S2 {
 public:
   S2() : a(0) {}
   S2(S2 &s2) : a(s2.a) {}
-  static float S2s;
+  static float S2s; // expected-note 2 {{static data member is predetermined as shared}}
   static const float S2sc;
 };
 const float S2::S2sc = 0; // expected-note 2 {{'S2sc' defined here}}
@@ -130,19 +130,19 @@ T tmain(T argc) {
 #pragma omp teams reduction(max : h.b) // expected-error {{expected variable name, array element or array section}}
   foo();
 #pragma omp target
-#pragma omp teams reduction(+ : ba) // expected-error {{a reduction list item with array type 'const S2 [5]'}}
+#pragma omp teams reduction(+ : ba) // expected-error {{const-qualified list item cannot be reduction}}
   foo();
 #pragma omp target
-#pragma omp teams reduction(* : ca) // expected-error {{a reduction list item with array type 'const S3 [5]'}}
+#pragma omp teams reduction(* : ca) // expected-error {{const-qualified list item cannot be reduction}}
   foo();
 #pragma omp target
-#pragma omp teams reduction(- : da) // expected-error {{a reduction list item with array type 'const int [5]'}} expected-error {{a reduction list item with array type 'const float [5]'}}
+#pragma omp teams reduction(- : da) // expected-error {{const-qualified list item cannot be reduction}} expected-error {{const-qualified list item cannot be reduction}}
   foo();
 #pragma omp target
 #pragma omp teams reduction(^ : fl) // expected-error {{invalid operands to binary expression ('float' and 'float')}}
   foo();
 #pragma omp target
-#pragma omp teams reduction(&& : S2::S2s)
+#pragma omp teams reduction(&& : S2::S2s) // expected-error {{shared variable cannot be reduction}}
   foo();
 #pragma omp target
 #pragma omp teams reduction(&& : S2::S2sc) // expected-error {{const-qualified list item cannot be reduction}}
@@ -175,6 +175,7 @@ T tmain(T argc) {
 #pragma omp teams
 #pragma omp parallel for private(fl)
   for (int i = 0; i < 10; ++i)
+  {}
 #pragma omp target
 #pragma omp teams reduction(+ : fl)
     foo();
@@ -182,6 +183,7 @@ T tmain(T argc) {
 #pragma omp teams
 #pragma omp parallel for reduction(- : fl)
   for (int i = 0; i < 10; ++i)
+  {}
 #pragma omp target
 #pragma omp teams reduction(+ : fl)
     foo();
@@ -258,19 +260,19 @@ int main(int argc, char **argv) {
 #pragma omp teams reduction(max : h.b) // expected-error {{expected variable name, array element or array section}}
   foo();
 #pragma omp target
-#pragma omp teams reduction(+ : ba) // expected-error {{a reduction list item with array type 'const S2 [5]'}}
+#pragma omp teams reduction(+ : ba) // expected-error {{const-qualified list item cannot be reduction}}
   foo();
 #pragma omp target
-#pragma omp teams reduction(* : ca) // expected-error {{a reduction list item with array type 'const S3 [5]'}}
+#pragma omp teams reduction(* : ca) // expected-error {{const-qualified list item cannot be reduction}}
   foo();
 #pragma omp target
-#pragma omp teams reduction(- : da) // expected-error {{a reduction list item with array type 'const int [5]'}}
+#pragma omp teams reduction(- : da) // expected-error {{const-qualified list item cannot be reduction}}
   foo();
 #pragma omp target
 #pragma omp teams reduction(^ : fl) // expected-error {{invalid operands to binary expression ('float' and 'float')}}
   foo();
 #pragma omp target
-#pragma omp teams reduction(&& : S2::S2s)
+#pragma omp teams reduction(&& : S2::S2s) // expected-error {{shared variable cannot be reduction}}
   foo();
 #pragma omp target
 #pragma omp teams reduction(&& : S2::S2sc) // expected-error {{const-qualified list item cannot be reduction}}
@@ -306,6 +308,7 @@ int main(int argc, char **argv) {
 #pragma omp teams
 #pragma omp parallel for private(fl)
   for (int i = 0; i < 10; ++i)
+  {}
 #pragma omp target
 #pragma omp teams reduction(+ : fl)
     foo();
@@ -313,6 +316,7 @@ int main(int argc, char **argv) {
 #pragma omp teams
 #pragma omp parallel for reduction(- : fl)
   for (int i = 0; i < 10; ++i)
+  {}
 #pragma omp target
 #pragma omp teams reduction(+ : fl)
     foo();

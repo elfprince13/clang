@@ -263,6 +263,103 @@ Query for this feature with ``__has_attribute(enable_if)``.
   }];
 }
 
+def PassObjectSizeDocs : Documentation {
+  let Category = DocCatVariable; // Technically it's a parameter doc, but eh.
+  let Content = [{
+.. Note:: The mangling of functions with parameters that are annotated with
+  ``pass_object_size`` is subject to change. You can get around this by
+  using ``__asm__("foo")`` to explicitly name your functions, thus preserving
+  your ABI; also, non-overloadable C functions with ``pass_object_size`` are
+  not mangled.
+
+The ``pass_object_size(Type)`` attribute can be placed on function parameters to
+instruct clang to call ``__builtin_object_size(param, Type)`` at each callsite
+of said function, and implicitly pass the result of this call in as an invisible
+argument of type ``size_t`` directly after the parameter annotated with
+``pass_object_size``. Clang will also replace any calls to
+``__builtin_object_size(param, Type)`` in the function by said implicit
+parameter.
+
+Example usage:
+
+.. code-block:: c
+
+  int bzero1(char *const p __attribute__((pass_object_size(0))))
+      __attribute__((noinline)) {
+    int i = 0;
+    for (/**/; i < (int)__builtin_object_size(p, 0); ++i) {
+      p[i] = 0;
+    }
+    return i;
+  }
+
+  int main() {
+    char chars[100];
+    int n = bzero1(&chars[0]);
+    assert(n == sizeof(chars));
+    return 0;
+  }
+
+If successfully evaluating ``__builtin_object_size(param, Type)`` at the
+callsite is not possible, then the "failed" value is passed in. So, using the
+definition of ``bzero1`` from above, the following code would exit cleanly:
+
+.. code-block:: c
+
+  int main2(int argc, char *argv[]) {
+    int n = bzero1(argv);
+    assert(n == -1);
+    return 0;
+  }
+
+``pass_object_size`` plays a part in overload resolution. If two overload
+candidates are otherwise equally good, then the overload with one or more
+parameters with ``pass_object_size`` is preferred. This implies that the choice
+between two identical overloads both with ``pass_object_size`` on one or more
+parameters will always be ambiguous; for this reason, having two such overloads
+is illegal. For example:
+
+.. code-block:: c++
+
+  #define PS(N) __attribute__((pass_object_size(N)))
+  // OK
+  void Foo(char *a, char *b); // Overload A
+  // OK -- overload A has no parameters with pass_object_size.
+  void Foo(char *a PS(0), char *b PS(0)); // Overload B
+  // Error -- Same signature (sans pass_object_size) as overload B, and both
+  // overloads have one or more parameters with the pass_object_size attribute.
+  void Foo(void *a PS(0), void *b);
+
+  // OK
+  void Bar(void *a PS(0)); // Overload C
+  // OK
+  void Bar(char *c PS(1)); // Overload D
+
+  void main() {
+    char known[10], *unknown;
+    Foo(unknown, unknown); // Calls overload B
+    Foo(known, unknown); // Calls overload B
+    Foo(unknown, known); // Calls overload B
+    Foo(known, known); // Calls overload B
+
+    Bar(known); // Calls overload D
+    Bar(unknown); // Calls overload D
+  }
+
+Currently, ``pass_object_size`` is a bit restricted in terms of its usage:
+
+* Only one use of ``pass_object_size`` is allowed per parameter.
+
+* It is an error to take the address of a function with ``pass_object_size`` on
+  any of its parameters. If you wish to do this, you can create an overload
+  without ``pass_object_size`` on any parameters.
+
+* It is an error to apply the ``pass_object_size`` attribute to parameters that
+  are not pointers. Additionally, any parameter that ``pass_object_size`` is
+  applied to must be marked ``const`` at its function's definition.
+  }];
+}
+
 def OverloadableDocs : Documentation {
   let Category = DocCatFunction;
   let Content = [{
@@ -711,6 +808,46 @@ The semantics are as follows:
   handler, where the offset from "lr" to the preferred return address depends on
   the execution state of the code which generated the exception. In this case
   a sequence equivalent to "movs pc, lr" will be used.
+  }];
+}
+
+def MipsInterruptDocs : Documentation {
+  let Category = DocCatFunction;
+  let Content = [{
+Clang supports the GNU style ``__attribute__((interrupt("ARGUMENT")))`` attribute on
+MIPS targets. This attribute may be attached to a function definition and instructs
+the backend to generate appropriate function entry/exit code so that it can be used
+directly as an interrupt service routine.
+
+By default, the compiler will produce a function prologue and epilogue suitable for
+an interrupt service routine that handles an External Interrupt Controller (eic)
+generated interrupt. This behaviour can be explicitly requested with the "eic"
+argument.
+
+Otherwise, for use with vectored interrupt mode, the argument passed should be
+of the form "vector=LEVEL" where LEVEL is one of the following values:
+"sw0", "sw1", "hw0", "hw1", "hw2", "hw3", "hw4", "hw5". The compiler will
+then set the interrupt mask to the corresponding level which will mask all
+interrupts up to and including the argument.
+
+The semantics are as follows:
+
+- The prologue is modified so that the Exception Program Counter (EPC) and
+  Status coprocessor registers are saved to the stack. The interrupt mask is
+  set so that the function can only be interrupted by a higher priority
+  interrupt. The epilogue will restore the previous values of EPC and Status.
+
+- The prologue and epilogue are modified to save and restore all non-kernel
+  registers as necessary.
+
+- The FPU is disabled in the prologue, as the floating pointer registers are not
+  spilled to the stack.
+
+- The function return sequence is changed to use an exception return instruction.
+
+- The parameter sets the interrupt mask for the function corresponding to the
+  interrupt level specified. If no mask is specified the interrupt mask
+  defaults to "eic".
   }];
 }
 
@@ -1720,5 +1857,58 @@ Marking virtual functions as ``disable_tail_calls`` is legal.
       }
     };
 
+  }];
+}
+
+def AnyX86InterruptDocs : Documentation {
+  let Category = DocCatFunction;
+  let Content = [{
+Clang supports the GNU style ``__attribute__((interrupt))`` attribute on
+x86/x86-64 targets.The compiler generates function entry and exit sequences
+suitable for use in an interrupt handler when this attribute is present.
+The 'IRET' instruction, instead of the 'RET' instruction, is used to return
+from interrupt or exception handlers.  All registers, except for the EFLAGS
+register which is restored by the 'IRET' instruction, are preserved by the
+compiler.
+
+Any interruptible-without-stack-switch code must be compiled with
+-mno-red-zone since interrupt handlers can and will, because of the
+hardware design, touch the red zone.
+
+1. interrupt handler must be declared with a mandatory pointer argument:
+
+  .. code-block:: c
+
+    struct interrupt_frame
+    {
+      uword_t ip;
+      uword_t cs;
+      uword_t flags;
+      uword_t sp;
+      uword_t ss;
+    };
+
+    __attribute__ ((interrupt))
+    void f (struct interrupt_frame *frame) {
+      ...
+    }
+
+2. exception handler:
+
+  The exception handler is very similar to the interrupt handler with
+  a different mandatory function signature:
+
+  .. code-block:: c
+
+    __attribute__ ((interrupt))
+    void f (struct interrupt_frame *frame, uword_t error_code) {
+      ...
+    }
+
+  and compiler pops 'ERROR_CODE' off stack before the 'IRET' instruction.
+
+  The exception handler should only be used for exceptions which push an
+  error code and all other exceptions must use the interrupt handler.
+  The system will crash if the wrong handler is used.
   }];
 }

@@ -33,9 +33,8 @@ tools/extra
 # Sphinx build products
 docs/_build
 docs/analyzer/_build
-
-
-
+# debug info testsuite
+test/debuginfo-tests
 #----------------------------------------------------------------------
 skeltests/tmp
 a.out

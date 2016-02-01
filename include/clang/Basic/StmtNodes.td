@@ -147,8 +147,9 @@ def LambdaExpr : DStmt<Expr>;
 def CXXFoldExpr : DStmt<Expr>;
 
 // C++ Coroutines TS expressions
-def CoawaitExpr : DStmt<Expr>;
-def CoyieldExpr : DStmt<Expr>;
+def CoroutineSuspendExpr : DStmt<Expr, 1>;
+def CoawaitExpr : DStmt<CoroutineSuspendExpr>;
+def CoyieldExpr : DStmt<CoroutineSuspendExpr>;
 
 // Obj-C Expressions.
 def ObjCStringLiteral : DStmt<Expr>;
@@ -181,6 +182,7 @@ def TypoExpr : DStmt<Expr>;
 
 // Microsoft Extensions.
 def MSPropertyRefExpr : DStmt<Expr>;
+def MSPropertySubscriptExpr : DStmt<Expr>;
 def CXXUuidofExpr : DStmt<Expr>; 
 def SEHTryStmt : Stmt;
 def SEHExceptStmt : Stmt;
@@ -216,6 +218,12 @@ def OMPOrderedDirective : DStmt<OMPExecutableDirective>;
 def OMPAtomicDirective : DStmt<OMPExecutableDirective>;
 def OMPTargetDirective : DStmt<OMPExecutableDirective>;
 def OMPTargetDataDirective : DStmt<OMPExecutableDirective>;
+def OMPTargetEnterDataDirective : DStmt<OMPExecutableDirective>;
+def OMPTargetExitDataDirective : DStmt<OMPExecutableDirective>;
+def OMPTargetParallelDirective : DStmt<OMPExecutableDirective>;
 def OMPTeamsDirective : DStmt<OMPExecutableDirective>;
 def OMPCancellationPointDirective : DStmt<OMPExecutableDirective>;
 def OMPCancelDirective : DStmt<OMPExecutableDirective>;
+def OMPTaskLoopDirective : DStmt<OMPLoopDirective>;
+def OMPTaskLoopSimdDirective : DStmt<OMPLoopDirective>;
+def OMPDistributeDirective : DStmt<OMPLoopDirective>;

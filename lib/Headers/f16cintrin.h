@@ -28,28 +28,29 @@
 #ifndef __F16CINTRIN_H
 #define __F16CINTRIN_H
 
-typedef float __v8sf __attribute__ ((__vector_size__ (32)));
-typedef float __m256 __attribute__ ((__vector_size__ (32)));
-
 /* Define the default attributes for the functions in this file. */
-#define __DEFAULT_FN_ATTRS __attribute__((__always_inline__, __nodebug__, __target__("f16c")))
+#define __DEFAULT_FN_ATTRS \ 
+  __attribute__((__always_inline__, __nodebug__, __target__("f16c")))
 
-#define _mm_cvtps_ph(a, imm) __extension__ ({ \
- (__m128i)__builtin_ia32_vcvtps2ph((__v4sf)(__m128)(a), (imm)); })
+static __inline float __DEFAULT_FN_ATTRS
+_cvtsh_ss(unsigned short a)
+{
+  __v8hi v = {(short)a, 0, 0, 0, 0, 0, 0, 0};
+  __v4sf r = __builtin_ia32_vcvtph2ps(v);
+  return r[0];
+}
 
-#define _mm256_cvtps_ph(a, imm) __extension__ ({ \
- (__m128i)__builtin_ia32_vcvtps2ph256((__v8sf)(__m256)(a), (imm)); })
+#define _cvtss_sh(a, imm)  \
+  ((unsigned short)(((__v8hi)__builtin_ia32_vcvtps2ph((__v4sf){a, 0, 0, 0}, \
+                                                      (imm)))[0]))
+
+#define _mm_cvtps_ph(a, imm) \
+  ((__m128i)__builtin_ia32_vcvtps2ph((__v4sf)(__m128)(a), (imm)))
 
 static __inline __m128 __DEFAULT_FN_ATTRS
 _mm_cvtph_ps(__m128i __a)
 {
   return (__m128)__builtin_ia32_vcvtph2ps((__v8hi)__a);
-}
-
-static __inline __m256 __DEFAULT_FN_ATTRS
-_mm256_cvtph_ps(__m128i __a)
-{
-  return (__m256)__builtin_ia32_vcvtph2ps256((__v8hi)__a);
 }
 
 #undef __DEFAULT_FN_ATTRS
